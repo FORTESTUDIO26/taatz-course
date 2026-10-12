@@ -1,0 +1,14 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl"><head><meta charset="utf-8"><title>דוגמת טופס סיום</title>
+<link href="https://fonts.googleapis.com/css2?family=Assistant:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<style>@page{size:297mm 210mm;margin:0}html,body{margin:0;padding:0;background:#fff}canvas{display:block;width:1123px;height:794px}@media print{canvas{width:297mm;height:210mm}}</style></head>
+<body><div id="c"></div>
+<script type="module">
+// עמוד בדיקה מקומי בלבד (לא חלק מהאתר): מציג דוגמת טופס סיום. הפרטים מועברים ב-hash כדי שלא יישמרו בקוד.
+import { drawCert } from '/js/cert.js';
+const p = new URLSearchParams(location.hash.slice(1));
+const d = { full_name: p.get('name') || 'שם המשתתף/ת', final_score: p.get('score'), cohort_name: p.get('cohort') || 'מחזור ז׳',
+  start_date: p.get('start') || '2026-11-02', end_date: p.get('end') || '2026-11-05', course_title: 'קורס קציני משא״ן ע״צ',
+  signer_name: p.get('signer'), signer_title: p.get('title'), cert_no: p.get('no'), issued_at: p.get('issued') };
+drawCert(d, { watermark: p.get('wm') ?? 'דוגמה', scale: Number(p.get('scale') || 1) }).then(cv => document.getElementById('c').appendChild(cv));
+</script></body></html>

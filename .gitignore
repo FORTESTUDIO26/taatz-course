@@ -1,0 +1,15 @@
+# Whitelist: only the site code is tracked. Everything else in this folder
+# (presentations, source images, exports) stays local and is never pushed.
+/*
+!/.gitignore
+!/README.md
+!/docs/
+!/supabase/
+!/tools/
+# never commit secrets or local data
+*.env
+.env*
+supabase/.temp/
+supabase/secrets*
+
+tools/node_modules/
