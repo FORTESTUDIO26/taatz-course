@@ -911,13 +911,13 @@ async function showSubmission(id) {
 async function certSettings() {
   const rows = await store.list('private_assets');
   const g = k => rows.find(r => r.key === k)?.value || {};
-  return { settings: g('cert_settings'), signature: g('signature') };
+  return { settings: g('cert_settings'), signature: g('signature'), template: g('cert_template') };
 }
 VIEWS.certs = async () => {
   if (!cohorts.length || selCohort === '*') return `<div class="wrap">${head('award', 'טופסי סיום')}${noCohorts()}</div>`;
   const c = cohorts.find(x => x.id === selCohort);
   const [exam] = await store.list('exams', { eq: { cohort_id: selCohort } });
-  const { settings, signature } = await certSettings();
+  const { settings, signature, template } = await certSettings();
   const people = exam ? await peopleOf(exam.id) : [];
   const eligible = people.filter(p => p.passed && !p.cert);
   const certState = p => {
@@ -931,8 +931,9 @@ VIEWS.certs = async () => {
       <div class="formgrid">
         <div class="field"><span class="lbl">שם הקורס</span><div>${esc(settings.course_title || 'קורס קציני משא״ן ע״צ')}</div></div>
         <div class="field"><span class="lbl">מחזור ותאריכים</span><div>${esc(c.name)} · ${c.start_date ? esc(fmtRange(c.start_date, c.end_date)) : '<span class="req">אין תאריכים</span>'}</div></div>
-        <div class="field"><span class="lbl">חותמת</span><div>${settings.signer_name ? esc(settings.signer_name) + ' · ' + esc(settings.signer_title || '') : '<span class="req">לא הוגדר</span>'}</div></div>
-        <div class="field"><span class="lbl">קובץ חתימה</span><div>${signature.data_uri ? `<img src="${esc(signature.data_uri)}" alt="חתימה" style="max-height:44px;background:#fff;border:1px solid var(--line);border-radius:6px;padding:2px">` : '<span class="req">טרם הועלה — בטופס יופיע קו ריק לחתימה ידנית</span>'}</div></div>
+        <div class="field"><span class="lbl">תבנית</span><div>${template.data_uri ? `תעודת גמר (התבנית שלך) · נשמרה באזור המוגן${template.updated_at ? ' · ' + esc(fmtDateTime(template.updated_at)) : ''}` : 'עיצוב בסיסי — לא הוגדרה תבנית'}</div></div>
+        <div class="field"><span class="lbl">חותמת</span><div>${template.data_uri ? esc(template.signer || 'כפי שמופיע בתבנית') + ' (מתוך התבנית)' : settings.signer_name ? esc(settings.signer_name) + ' · ' + esc(settings.signer_title || '') : '<span class="req">לא הוגדר</span>'}</div></div>
+        <div class="field"><span class="lbl">קובץ חתימה</span><div>${signature.data_uri ? `<img src="${esc(signature.data_uri)}" alt="חתימה" style="max-height:44px;background:#fff;border:1px solid var(--line);border-radius:6px;padding:2px">` : '<span class="req">טרם הועלה — בתעודה יישאר מקום נקי לחתימה ידנית</span>'}</div></div>
       </div>
       <div class="btnrow"><button class="btn ghost sm" id="cert-settings">${icon('settings')}עריכת פרטי החותמת והחתימה</button><button class="btn solid sm" id="cert-sample">תצוגה מקדימה (דוגמה)</button></div></div>
     ${!exam ? '<div class="empty"><b>לא הוגדר מבחן למחזור הזה</b>טופס הסיום מבוסס על הציון הקובע במבחן.</div>' : `
@@ -944,21 +945,21 @@ VIEWS.certs = async () => {
         <td><div class="btnrow">${p.passed && !p.cert ? `<button class="btn ghost sm" data-cert-preview="${p.deciding_sub}">תצוגה</button><button class="btn solid sm" data-cert-issue="${p.deciding_sub}">אישור והפקה</button>` : ''}
           ${p.cert ? `<button class="btn ghost sm" data-cert-pdf="${p.cert.id}">${icon('download')}PDF</button><button class="btn danger sm" data-cert-revoke="${p.cert.id}">ביטול</button>` : ''}</div></td></tr>`).join('')}
       </tbody></table></div>` : '<div class="empty"><b>אין עדיין נבחנים</b></div>'}`}
-    <p class="small muted" style="margin-top:14px">החתימה בטופס היא תמונה של חתימה בכתב יד — לא חתימה דיגיטלית מאומתת. ת״ז אינה מודפסת בטופס, אלא אם בוחרים בכך בעת ההפקה.</p></div>`;
+    <p class="small muted" style="margin-top:14px">החתימה בתעודה היא תמונה של חתימה בכתב יד — לא חתימה דיגיטלית מאומתת. ת״ז מודפסת בתעודה כטקסט (כולל אפסים מובילים). התעודה האישית זמינה רק לך ולמשתתף/ת עם קוד האישור האישי.</p></div>`;
 };
 async function previewSheet(d, watermark, title) {
   const { mountPreview } = await import('./cert.js');
   const el = sheet(`<h3>${esc(title)}</h3><div id="cprev" style="margin:10px 0 14px"></div><div class="btnrow"><button class="btn ghost" data-close>סגירה</button></div>`, { wide: true });
   mountPreview($('#cprev', el), d, { watermark });
 }
-function sampleData(c, settings, signature, extra = {}) {
-  return { full_name: 'שם המשתתף/ת', final_score: null, cohort_name: c.name, start_date: c.start_date, end_date: c.end_date,
+function sampleData(c, settings, signature, extra = {}, template = {}) {
+  return { full_name: 'שם המשתתף/ת', final_score: null, template: template.data_uri, cohort_name: c.name, start_date: c.start_date, end_date: c.end_date,
     course_title: settings.course_title || 'קורס קציני משא״ן ע״צ', signer_name: settings.signer_name, signer_title: settings.signer_title,
     signature: signature.data_uri, ...extra };
 }
 BIND.certs = () => {
   const c = cohorts.find(x => x.id === selCohort);
-  $('#cert-sample')?.addEventListener('click', async () => { const { settings, signature } = await certSettings(); previewSheet(sampleData(c, settings, signature), 'דוגמה', 'תצוגה מקדימה של טופס הסיום'); });
+  $('#cert-sample')?.addEventListener('click', async () => { const { settings, signature, template } = await certSettings(); previewSheet(sampleData(c, settings, signature, {}, template), 'דוגמה', 'תצוגה מקדימה של התעודה'); });
   $('#cert-settings')?.addEventListener('click', async () => {
     const { settings, signature } = await certSettings();
     const v = await formSheet('פרטי החותמת והחתימה', [
@@ -983,11 +984,11 @@ BIND.certs = () => {
     render();
   });
   $('#cert-all')?.addEventListener('click', async () => {
-    const v = await formSheet('אישור והפקה לכל הזכאים', [{ k: 'show_id', l: 'להדפיס ת״ז בטופס', type: 'checkbox', hint: 'ברירת המחדל: לא.' }], {},
-      { sub: 'יופקו טפסים לכל מי שעבר לפי הציון הקובע ואין לו טופס בתוקף. מי שנכשל או ממתין לבדיקה — לא יקבל טופס.', okLabel: 'אישור והפקה' });
+    const v = await formSheet('אישור והפקה לכל הזכאים', [], {},
+      { sub: 'יופקו תעודות לכל מי שעבר לפי הציון הקובע ואין לו תעודה בתוקף. מי שנכשל או ממתין לבדיקה — לא יקבל תעודה.', okLabel: 'אישור והפקה' });
     if (!v) return;
     const [exam] = await store.list('exams', { eq: { cohort_id: selCohort } });
-    const n = await run(() => store.rpc('issue_all_certificates', { p_exam: exam.id, p_show_id: !!v.show_id }));
+    const n = await run(() => store.rpc('issue_all_certificates', { p_exam: exam.id, p_show_id: true }));
     toast(`הופקו ${n} טפסים`); render();
   });
   $('#cert-all-pdf')?.addEventListener('click', async e => {
@@ -1008,14 +1009,14 @@ document.addEventListener('click', async e => {
   const p = (await peopleOf(exam.id)).find(x => (subKey && x.deciding_sub === subKey) || (certKey && x.cert?.id === certKey));
   if (!p) return toast("הרשומה לא נמצאה. רעננו את הדף.", true);
   if (d.certPreview) {
-    const { settings, signature } = await certSettings();
-    return previewSheet(sampleData(c, settings, signature, { full_name: p.full_name, final_score: p.final_score }), 'טיוטה', `תצוגה לפני אישור · ${p.full_name}`);
+    const { settings, signature, template } = await certSettings();
+    return previewSheet(sampleData(c, settings, signature, { full_name: p.full_name, final_score: p.final_score, id_number: p.id_number }, template), 'טיוטה', `תצוגה לפני אישור · ${p.full_name}`);
   }
   if (d.certIssue) {
-    const v = await formSheet(`אישור זכאות והפקה · ${p.full_name}`, [{ k: 'show_id', l: 'להדפיס ת״ז בטופס', type: 'checkbox', hint: 'ברירת המחדל: לא.' }], {},
+    const v = await formSheet(`אישור זכאות והפקה · ${p.full_name}`, [], {},
       { sub: `ציון קובע: ${fmtScore(p.final_score)}. אחרי האישור הטופס יהיה זמין למשתתף/ת עם קוד האישור האישי.`, okLabel: 'אישור והפקה' });
     if (!v) return;
-    await run(() => store.rpc('issue_certificate', { p_submission: d.certIssue, p_show_id: !!v.show_id }), 'הטופס הופק'); return render();
+    await run(() => store.rpc('issue_certificate', { p_submission: d.certIssue, p_show_id: true }), 'הטופס הופק'); return render();
   }
   if (d.certPdf) {
     t.disabled = true;

@@ -161,14 +161,14 @@ const SUB_A3 = (await rows('authenticated', ADMIN, `select id from exam_submissi
 ok(!!(await fails('anon', null, `select issue_certificate($1)`, [SUB_A3])) && /not_admin/.test(await fails('authenticated', OTHER, `select issue_certificate($1)`, [SUB_A3])), 'רק מנהלת מפיקה טופס');
 let gc = (await rows('anon', null, `select get_certificate($1) r`, [a3.receipt]))[0].r;
 ok(gc.available === false, 'לפני אישור המנהלת — אין טופס למשתתף/ת');
-await db.exec(`insert into private_assets (key, value) values ('cert_settings', '{"signer_name":"חותמת לבדיקה","signer_title":"תפקיד לבדיקה"}'), ('signature', '{"data_uri":"data:image/png;base64,AAAA"}')`);
+await db.exec(`insert into private_assets (key, value) values ('cert_settings', '{"signer_name":"חותמת לבדיקה","signer_title":"תפקיד לבדיקה"}'), ('signature', '{"data_uri":"data:image/png;base64,AAAA"}'), ('cert_template', '{"data_uri":"data:image/jpeg;base64,TPL"}')`);
 ok((await rows('anon', null, `select * from private_assets`)).length === 0 && (await rows('authenticated', OTHER, `select * from private_assets`)).length === 0, 'קובץ החתימה ופרטי החותמת חסומים לציבור');
 const cert = (await rows('authenticated', ADMIN, `select issue_certificate($1) c`, [SUB_A3]))[0].c;
-ok(cert.full_name === 'דנה כהן' && cert.final_score == 100 && cert.id_number === null && cert.cohort_name === 'מחזור ז׳' && cert.start_date === '2026-11-02', 'טופס הופק: שם, ציון קובע, מחזור ותאריכים; ת"ז לא מודפסת כברירת מחדל', JSON.stringify(cert).slice(0, 300));
+ok(cert.full_name === 'דנה כהן' && cert.final_score == 100 && cert.id_number === ID1 && ID1.startsWith('0') && cert.template === 'data:image/jpeg;base64,TPL' && cert.cohort_name === 'מחזור ז׳' && cert.start_date === '2026-11-02', 'תעודה הופקה: שם, ציון קובע, מחזור ותאריכים, ת"ז כטקסט (כולל 0 מוביל) ותבנית מהאזור המוגן', JSON.stringify(cert).slice(0, 300));
 ok(/already_issued/.test(await fails('authenticated', ADMIN, `select issue_certificate($1)`, [SUB_A3])), 'אין שני טפסים בתוקף לאותו אדם');
 ok((await rows('anon', null, `select * from certificates`)).length === 0, 'טבלת הטפסים חסומה לציבור');
 gc = (await rows('anon', null, `select get_certificate($1) r`, [a3.receipt]))[0].r;
-ok(gc.available && gc.certificate.full_name === 'דנה כהן' && gc.certificate.signature, 'המשתתף/ת מקבל/ת את הטופס עם קוד האישור של הניסיון הקובע');
+ok(gc.available && gc.certificate.full_name === 'דנה כהן' && gc.certificate.signature && gc.certificate.template && gc.certificate.id_number === ID1, 'המשתתף/ת מקבל/ת את הטופס עם קוד האישור של הניסיון הקובע');
 gc = (await rows('anon', null, `select get_certificate($1) r`, [a1.receipt]))[0].r;
 ok(gc.available === false, 'קוד של ניסיון אחר של אותו אדם לא פותח את הטופס');
 gc = (await rows('anon', null, `select get_certificate($1) r`, [a2.receipt]))[0].r;

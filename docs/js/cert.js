@@ -2,6 +2,7 @@
 // הקובץ נוצר בדפדפן בזמן ההורדה ואינו נשמר באחסון.
 // החתימה היא תמונה של חתימה בכתב יד שהמנהלת העלתה — לא חתימה דיגיטלית מאומתת.
 import { fmtHebRange, fmtDate, loadScript, LIBS } from './ui.js';
+import { hebRange } from './hebdate.js';
 
 const W = 1123, H = 794; // A4 לרוחב ב-96dpi
 const C = { deep: '#003652', navy: '#074B7A', navy2: '#0A4979', blue: '#2070A0', amber: '#FFB75C', ink: '#0D2534', muted: '#5B7080', line: '#D9E3EC', tint: '#F4F8FB' };
@@ -11,10 +12,60 @@ const score = v => v == null || v === '' ? '—' : (Math.round(Number(v) * 10) /
 const imgCache = {};
 const loadImg = src => imgCache[src] ||= new Promise(res => { const im = new Image(); im.onload = () => res(im); im.onerror = () => res(null); im.src = src; });
 async function ready() {
-  try { await Promise.all(['400', '700', '800'].map(w => document.fonts.load(`${w} 40px Assistant`, 'אבג'))); } catch { /* fallback fonts */ }
+  try { await Promise.all(['300', '400', '600', '700', '800'].map(w => document.fonts.load(`${w} 40px Assistant`, 'אבג'))); } catch { /* fallback fonts */ }
 }
 
-export async function drawCert(d, { watermark = '', scale = 2 } = {}) {
+// ---------- תעודת גמר לפי תבנית המנהלת (A4 לאורך) ----------
+// התבנית (תמונת רקע של ה-PDF המקורי) נשמרת באזור המוגן במסד הנתונים ואינה חלק מהאתר.
+// כל המידות בנקודות PDF (595.5×842.25), כפי שנמדדו בתבנית.
+const TP = { W: 595.5, H: 842.25, blue: '#0A4A7A', ink: '#000000', muted: '#5B7080' };
+const LTR = s => `⁦${s}⁩`;   // בידוד כיווניות למספרים (2–5, ת״ז)
+const gregRange = (a, b) => fmtHebRange(a, b).replace(/(\d+)–(\d+)/, (m, p, q) => LTR(`${p}–${q}`));
+async function drawTemplateCert(d, { watermark = '', scale = 300 / 72, signatureSlot = false } = {}) {
+  await ready();
+  const [bg, sig] = await Promise.all([loadImg(d.template), d.signature ? loadImg(d.signature) : null]);
+  if (!bg) throw new Error('cert_template_missing');
+  const cv = document.createElement('canvas');
+  cv.width = Math.round(TP.W * scale); cv.height = Math.round(TP.H * scale);
+  const x = cv.getContext('2d');
+  x.drawImage(bg, 0, 0, cv.width, cv.height);
+  x.scale(scale, scale);
+  x.direction = 'rtl';
+  const text = (s, pt, weight, color, cx, y, { align = 'center', maxW = 0 } = {}) => {
+    let size = pt; x.font = `${weight} ${size}px ${FONT}`;
+    while (maxW && x.measureText(s).width > maxW && size > 8) { size -= .5; x.font = `${weight} ${size}px ${FONT}`; }
+    x.fillStyle = color; x.textAlign = align; x.textBaseline = 'alphabetic'; x.fillText(s, cx, y);
+  };
+  // הסרת "דרגה" והחלפת "מ.א / מ.ע" ב"תעודת זהות" (הרקע שם לבן)
+  x.fillStyle = '#fff'; x.fillRect(226, 441, 49, 25); x.fillRect(357, 440, 85, 26);
+  text('תעודת זהות', 20, 300, TP.ink, 436, 461, { align: 'right' });
+  // פרטי המשתתף/ת מעל הקו
+  text(d.full_name || '', 21, 700, TP.blue, 92, 416, { maxW: 148 });
+  if (d.id_number) text(LTR(String(d.id_number)), 21, 700, TP.blue, 399, 416, { maxW: 110 });
+  // תאריכי הקורס (לועזי ועברי) מתחת ל"שנערך בין התאריכים"
+  if (d.start_date) {
+    text(gregRange(d.start_date, d.end_date), 22, 600, TP.blue, 241, 670, { maxW: 400 });
+    text(hebRange(d.start_date, d.end_date), 22, 600, TP.blue, 241, 698, { maxW: 400 });
+  }
+  // מחזור וציון — שורה קטנה מתחת לתאריכים
+  const extra = [d.cohort_name, d.final_score != null && d.final_score !== '' ? `ציון המבחן: ${LTR(score(d.final_score))}` : ''].filter(Boolean).join(' · ');
+  if (extra && d.showExtra !== false) text(extra, 13.5, 400, TP.muted, 241, 724, { maxW: 400 });
+  // חתימה בכתב יד (רק אם הועלה קובץ) מעל שם החותם שבתבנית
+  if (sig) { const r = Math.min(170 / sig.width, 42 / sig.height); x.drawImage(sig, 112 - sig.width * r / 2, 777 - sig.height * r, sig.width * r, sig.height * r); }
+  else if (signatureSlot) {
+    x.save(); x.setLineDash([3, 3]); x.strokeStyle = '#9FB3C4'; x.lineWidth = .8; x.strokeRect(27, 735, 170, 42); x.restore();
+    text('מקום לחתימה', 10, 400, '#9FB3C4', 112, 760);
+  }
+  // מספר תעודה, גרסה ותאריך הפקה — קטן, בתחתית
+  const meta = [d.cert_no ? `מס׳ תעודה ${LTR(d.cert_no)}` : '', d.version > 1 ? `גרסה ${d.version}` : '', d.issued_at ? `הופקה ${LTR(fmtDate(String(d.issued_at).slice(0, 10)))}` : ''].filter(Boolean).join(' · ');
+  if (meta) text(meta, 8, 400, TP.muted, 458, 831, { align: 'right' });
+  if (watermark) { x.save(); x.translate(TP.W * .42, TP.H * .5); x.rotate(-30 * Math.PI / 180); text(watermark, 110, 800, 'rgba(132,0,50,.10)', 0, 35); x.restore(); }
+  return cv;
+}
+
+export async function drawCert(d, opts = {}) {
+  if (d.template) return drawTemplateCert(d, opts);
+  const { watermark = '', scale = 2 } = opts;
   await ready();
   const [logo, sig] = await Promise.all([loadImg(new URL('../assets/logo-512.png', import.meta.url).href), d.signature ? loadImg(d.signature) : null]);
   const cv = document.createElement('canvas');
@@ -92,8 +143,8 @@ export async function drawCert(d, { watermark = '', scale = 2 } = {}) {
 // תצוגה מוקטנת בתוך אלמנט (רספונסיבי)
 export async function mountPreview(host, d, opts = {}) {
   host.innerHTML = '<p class="muted small">מכין תצוגה…</p>';
-  const cv = await drawCert(d, { ...opts, scale: 1.6 });
-  cv.style.cssText = 'width:100%;height:auto;display:block;border-radius:10px;box-shadow:0 10px 30px -14px rgba(0,54,82,.45)';
+  const cv = await drawCert(d, { ...opts, scale: d.template ? 2.2 : 1.6 });
+  cv.style.cssText = 'width:100%;height:auto;display:block;border-radius:10px;box-shadow:0 10px 30px -14px rgba(0,54,82,.45)' + (d.template ? ';max-width:560px;margin-inline:auto' : '');
   cv.setAttribute('role', 'img'); cv.setAttribute('aria-label', `טופס סיום קורס – ${d.full_name || ''}`);
   host.innerHTML = ''; host.appendChild(cv);
 }
@@ -102,13 +153,21 @@ export async function mountPreview(host, d, opts = {}) {
 export async function downloadPDF(list, filename, opts = {}) {
   await loadScript(LIBS.jspdf);
   const { jsPDF } = window.jspdf;
-  const pdf = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4', compress: true });
-  for (let i = 0; i < list.length; i++) {
-    const cv = await drawCert(list[i], { ...opts, scale: 2.5 });
-    if (i) pdf.addPage('a4', 'landscape');
-    pdf.addImage(cv.toDataURL('image/jpeg', 0.92), 'JPEG', 0, 0, 297, 210);
-  }
-  pdf.setProperties({ title: 'טופס סיום קורס', creator: 'מדור הדרכה מרכז תע״ץ' });
+  const pdf = await buildPDF(list, opts);
   pdf.save(filename);
 }
-export const certFileName = d => `טופס סיום - ${String(d.full_name || 'משתתף').replace(/[\\/:*?"<>|]/g, '')} - ${d.cohort_name || ''}.pdf`;
+// מסמך PDF (עמוד לכל תעודה): תבנית המנהלת — A4 לאורך ב-300dpi; העיצוב הקודם — A4 לרוחב
+export async function buildPDF(list, opts = {}) {
+  await loadScript(LIBS.jspdf);
+  const { jsPDF } = window.jspdf;
+  const portrait = !!list[0]?.template, orient = portrait ? 'portrait' : 'landscape';
+  const pdf = new jsPDF({ orientation: orient, unit: 'mm', format: 'a4', compress: true });
+  for (let i = 0; i < list.length; i++) {
+    const cv = await drawCert(list[i], { ...opts, scale: list[i].template ? 300 / 72 : 2.5 });
+    if (i) pdf.addPage('a4', orient);
+    pdf.addImage(cv.toDataURL('image/jpeg', 0.92), 'JPEG', 0, 0, portrait ? 210 : 297, portrait ? 297 : 210);
+  }
+  pdf.setProperties({ title: portrait ? 'תעודת גמר' : 'טופס סיום קורס', creator: 'מדור הדרכה מרכז תע״ץ' });
+  return pdf;
+}
+export const certFileName = d => `${d.template ? 'תעודת גמר' : 'טופס סיום'} - ${String(d.full_name || 'משתתף').replace(/[\\/:*?"<>|]/g, '')} - ${d.cohort_name || ''}.pdf`;

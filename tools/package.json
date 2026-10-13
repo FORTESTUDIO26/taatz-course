@@ -2,6 +2,11 @@
   "name": "taatz-course-tools",
   "private": true,
   "type": "module",
-  "scripts": { "test:db": "node db-test.mjs" },
-  "devDependencies": { "@electric-sql/pglite": "^0.3.0" }
+  "scripts": {
+    "test:db": "node db-test.mjs"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "^0.3.0",
+    "@hebcal/core": "^5.10.1"
+  }
 }
