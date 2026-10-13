@@ -56,3 +56,7 @@ node_modules/
 # Private import/export work area (personal data) - never commit
 _private_import/
 **/_private_import/
+
+# Local working copies of source images/templates (never commit)
+tools/_cert/
+tools/_icon-src/

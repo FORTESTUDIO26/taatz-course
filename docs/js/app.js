@@ -1,4 +1,5 @@
 import { createStore, errText } from './store.js';
+import { installHTML, handleInstallClick } from './install.js';
 import { esc, $, $$, icon, toast, confirmBox, safeUrl, todayISO, nowHM, fmtDayLong, fmtWeekday, fmtDM, hm, fmtRange, fmtDateTime,
   blockClass, isBreak, FOOTER_TEXT, demoBanner, normIlId } from './ui.js';
 
@@ -53,7 +54,7 @@ function renderShell() {
   const route = currentRoute();
   $('#side-nav').innerHTML = NAV.map(g => `${g.group ? `<div class="side-grp">${esc(g.group)}</div>` : ''}${g.items.map(it =>
     `<a class="nav-item${route === it.r ? ' is-on' : ''}" href="#/${it.r}" ${route === it.r ? 'aria-current="page"' : ''}>${icon(it.i)}<span>${esc(it.t)}</span></a>`).join('')}`).join('');
-  $('#foot').innerHTML = `${footLinks()}<div>${FOOTER_TEXT}</div>`;
+  $('#foot').innerHTML = `${installHTML()}${footLinks()}<div>${FOOTER_TEXT}</div>`;
 }
 // אזור הקישורים — כל הקישורים נפתחים בלשונית חדשה
 const LINKS = [
@@ -440,6 +441,7 @@ function openNav() { $('#side').classList.add('open'); $('#scrim').classList.add
 function closeNav() { $('#side').classList.remove('open'); $('#scrim').classList.remove('on'); $('#burger')?.setAttribute('aria-expanded', 'false'); }
 
 document.addEventListener('click', e => {
+  if (e.target.closest('[data-install]')) { handleInstallClick(e); return; }
   if (e.target.closest('#fb-form') && fbStep(e)) return;
   // לחיצה על קישור לעמוד הנוכחי טוענת אותו מחדש (למשל אחרי הגשת מבחן)
   const a = e.target.closest('a[href^="#/"]');

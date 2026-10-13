@@ -397,3 +397,10 @@ fieldset.q{min-width:0}
 /* תצוגה מקדימה של מבחן במסך הניהול: סימון התשובות הנכונות למנהלת */
 .show-keys .pv-key{background:#E7F6EC;border-color:#2E8B57}
 .show-keys .pv-key span::after{content:" ✓ תשובה נכונה";font-weight:800;color:#1F6B41;font-size:.85em}
+
+/* הוספה למסך הבית — כפתור שקט בתחתית הדף */
+.install-row{display:flex;justify-content:center;margin-bottom:12px}
+.install-row .btn{min-height:44px;gap:8px}
+.install-row svg{width:18px;height:18px}
+.install-steps{margin:8px 0 0;padding-inline-start:22px;line-height:1.7}
+.install-steps li{margin-bottom:4px}
