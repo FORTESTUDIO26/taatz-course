@@ -89,9 +89,25 @@ function viewHome() {
       <div><div class="eyebrow">${esc(s.org_name || 'מרכז תע״ץ')}</div><h1>${esc(s.course_title || 'קורס קציני משא״ן ע״צ')}</h1>
       ${s.home_intro ? `<p class="sub">${esc(s.home_intro)}</p>` : ''}
       ${c ? `<span class="pill"><span class="dot"></span>${esc(c.name)}${c.start_date ? ' · ' + esc(fmtRange(c.start_date, c.end_date)) : ''}</span>` : ''}</div></div></section>
-    <div class="wrap">${nowCard()}<div class="sect-title">כל תכני הקורס</div><div class="tiles">${tiles}</div></div>`;
+    <div class="wrap">${welcomeHTML()}${nowCard()}<div class="sect-title">כל תכני הקורס</div><div class="tiles">${tiles}</div></div>`;
 }
 
+// "דבר מדור ההדרכה": טקסט נגיש; פתיחה וצמצום באותו עמוד
+function welcomeHTML() {
+  const w = data.settings.welcome, c = data.cohort;
+  if (!w || !c || c.show_welcome === false) return '';
+  const lines = t => String(t || '').split('\n').map(x => x.trim()).filter(Boolean);
+  const body = lines(w.body);
+  return `<section class="welcome" aria-labelledby="welcome-h">
+    <div class="eyebrow">דבר מדור ההדרכה</div>
+    ${w.quote ? `<figure class="welcome-quote"><blockquote>"${esc(w.quote)}"</blockquote>${w.source ? `<figcaption>${esc(w.source)}</figcaption>` : ''}</figure>` : ''}
+    ${w.title ? `<h2 id="welcome-h">${esc(w.title)}</h2>` : '<h2 id="welcome-h" class="sr">דבר מדור ההדרכה</h2>'}
+    <div class="welcome-text">${lines(w.intro).map(p => `<p>${esc(p)}</p>`).join('')}</div>
+    ${body.length || w.signature ? `<div id="welcome-more" class="welcome-text" hidden>${body.map(p => `<p>${esc(p)}</p>`).join('')}
+      <div class="welcome-sign">${w.closing ? `<span>${esc(w.closing)}</span>` : ''}${w.signature ? `<b>${esc(w.signature)}</b>` : ''}</div></div>
+    <button class="btn ghost sm welcome-toggle" type="button" aria-expanded="false" aria-controls="welcome-more" data-welcome>לקריאת הברכה המלאה</button>` : ''}
+  </section>`;
+}
 function nowCard() {
   const today = todayISO(), t = nowHM();
   const items = data.schedule.filter(r => r.day_date === today && !isBreak(r.topic));
@@ -164,29 +180,45 @@ const glossList = g => g.length ? g.map(t => `<details class="acc"><summary>${es
 
 
 /* ---------------- exam ---------------- */
+const EXAM_CLOSED = 'המבחן אינו פתוח כעת';
 const receiptBox = () => `<div class="card pad" style="margin-top:22px"><div class="eyebrow">בדיקת תוצאה</div>
   <p class="small muted">אחרי ההגשה מתקבל קוד אישור אישי. אפשר להזין אותו כאן כדי לראות את התוצאה, כשהיא מפורסמת.</p>
   <form id="receipt-form" class="btnrow"><input class="input ltr" id="rc" style="max-width:240px" placeholder="קוד אישור" aria-label="קוד אישור" autocomplete="off" autocapitalize="characters" spellcheck="false" required>
   <button class="btn ghost" type="submit">בדיקה</button></form><div id="rc-out" style="margin-top:10px" role="status"></div></div>`;
+// קוד ההתחלה נשמר רק בלשונית הזו (לחזרה לניסיון אחרי רענון); לא נשמרים פרטים אישיים בדפדפן
+const tokKey = id => `taatz-exam-start-${id}`;
+const getTok = id => { try { return sessionStorage.getItem(tokKey(id)); } catch { return null; } };
+const setTok = (id, t) => { try { t ? sessionStorage.setItem(tokKey(id), t) : sessionStorage.removeItem(tokKey(id)); } catch { /* not critical */ } };
+let examRun = null; // { examId, token, timer, closed }
 
 async function viewExam() {
+  examRun = null;
   const c = data.cohort;
   const h = head('exam', '', 'מבחן הקורס');
-  if (!c) return `<div class="wrap">${h}${soon('המבחן ייפתח בהמשך')}</div>`;
+  if (!c) return `<div class="wrap">${h}${soon(EXAM_CLOSED, '')}</div>`;
   const [exam] = await store.list('exams', { eq: { cohort_id: c.id } });
-  if (!exam) return `<div class="wrap">${h}${soon('המבחן ייפתח בהמשך', 'פרטים יימסרו על ידי צוות הקורס.')}</div>`;
+  if (!exam || exam.mode === 'off') return `<div class="wrap">${h}${soon(EXAM_CLOSED, '')}</div>`;
   if (exam.mode === 'external') {
     const u = safeUrl(exam.external_url);
-    return `<div class="wrap">${head('exam', c.name, exam.title)}<div class="card pad stack">${exam.instructions ? `<p>${esc(exam.instructions)}</p>` : ''}
-      ${u && exam.is_open ? `<a class="btn solid" href="${esc(u)}" target="_blank" rel="noopener">${icon('external')}מעבר למבחן</a>` : '<p class="muted">המבחן עדיין לא נפתח.</p>'}</div></div>`;
+    return `<div class="wrap">${head('exam', c.name, exam.title)}${u && exam.is_open ? `<div class="card pad stack">${exam.instructions ? `<p>${esc(exam.instructions)}</p>` : ''}
+      <a class="btn solid" href="${esc(u)}" target="_blank" rel="noopener">${icon('external')}מעבר למבחן</a></div>` : soon(EXAM_CLOSED, '')}</div>`;
   }
   const withReceipt = exam.show_results !== 'never' ? receiptBox() : '';
-  if (!exam.is_open) return `<div class="wrap">${head('exam', c.name, exam.title)}${soon('המבחן אינו פתוח כרגע', 'המבחן ייפתח במועד שיקבע צוות הקורס.')}${withReceipt}</div>`;
-  const qs = await store.list('exam_questions', { eq: { exam_id: exam.id }, order: [['sort']] });
+  // חזרה לניסיון שכבר התחיל (גם בזמן ארכה אחרי סגירה מתונה)
+  const tok = getTok(exam.id);
+  if (tok) {
+    try {
+      const d = await store.rpc('get_exam_draft', { p_token: tok });
+      if (d.status === 'started' && d.can_submit) return examQuestionsHTML(exam, c, tok, d.questions, d.answers || {}, d.grace_until, withReceipt);
+      setTok(exam.id, null);
+      if (d.status === 'closed_unsubmitted' || !d.can_submit) return `<div class="wrap">${head('exam', c.name, exam.title)}
+        <div class="callout warn"><span class="mark"></span><div><h4>${EXAM_CLOSED}</h4><p>המבחן נסגר לפני שהניסיון הוגש. התשובות שנשמרו עד הסגירה שמורות אצל צוות הקורס.</p></div></div>${withReceipt}</div>`;
+    } catch { setTok(exam.id, null); }
+  }
+  if (!exam.is_open) return `<div class="wrap">${head('exam', c.name, exam.title)}${soon(EXAM_CLOSED, '')}${withReceipt}</div>`;
   return `<div class="wrap">${head('exam', c.name, exam.title)}
-    <div class="callout" style="margin-bottom:16px"><span class="mark"></span><div>${exam.instructions ? `<p>${esc(exam.instructions)}</p>` : ''}
-      <p class="small muted">${qs.length} שאלות</p></div></div>
-    <form id="exam-form" class="card pad" data-exam="${esc(exam.id)}" novalidate autocomplete="off">
+    ${exam.instructions ? `<div class="callout" style="margin-bottom:16px"><span class="mark"></span><div><p>${esc(exam.instructions)}</p></div></div>` : ''}
+    <form id="exam-start" class="card pad" data-exam="${esc(exam.id)}" novalidate autocomplete="off">
       <div class="eyebrow">פרטי הנבחן/ת</div>
       <div class="formgrid">
         <div class="field"><label for="ex-name">שם מלא <span class="req">*</span></label><input class="input" id="ex-name" required minlength="2" maxlength="80" autocomplete="name"></div>
@@ -194,9 +226,71 @@ async function viewExam() {
         <div class="field"><label for="ex-id">מספר תעודת זהות <span class="req">*</span></label><input class="input ltr" id="ex-id" required inputmode="numeric" maxlength="10" autocomplete="off" spellcheck="false">
           <span class="hint">9 ספרות, כולל ספרת ביקורת.</span></div>
       </div>
-      ${qs.map((q, i) => questionHTML(q, i, 'exam')).join('')}
+      <p class="small muted">אחרי ההתחלה התשובות נשמרות אוטומטית במהלך המבחן.</p>
+      <div class="err" id="exam-err" role="alert"></div><div class="btnrow"><button class="btn solid" type="submit">התחלת המבחן</button></div></form>${withReceipt}</div>`;
+}
+
+function examQuestionsHTML(exam, c, token, qs, answers, graceUntil, withReceipt) {
+  examRun = { examId: exam.id, token, timer: null, closed: false };
+  const grace = graceUntil && !exam.is_open ? `<div class="callout warn" id="grace-note" style="margin-bottom:16px"><span class="mark"></span><div><h4>המבחן נסגר להתחלות חדשות</h4>
+    <p>אפשר לסיים ולהגיש עד <b class="ltr">${esc(new Date(graceUntil).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' }))}</b>.</p></div></div>` : '';
+  setTimeout(() => restoreAnswers(answers), 0);
+  return `<div class="wrap">${head('exam', c.name, exam.title)}${grace}<div id="exam-closed-note"></div>
+    <form id="exam-form" class="card pad" data-exam="${esc(exam.id)}" novalidate autocomplete="off">
+      ${(qs || []).sort((a, b) => a.sort - b.sort).map((q, i) => questionHTML(q, i, 'exam')).join('')}
+      <div class="small muted" id="autosave" role="status" aria-live="polite"></div>
       <div class="err" id="exam-err" role="alert"></div><div class="btnrow" style="margin-top:14px"><button class="btn solid" type="submit">הגשת המבחן</button></div></form>${withReceipt}</div>`;
 }
+function restoreAnswers(answers) {
+  const form = $('#exam-form'); if (!form) return;
+  for (const [qid, v] of Object.entries(answers || {})) {
+    const fs = form.querySelector(`[data-q="${CSS.escape(qid)}"]`); if (!fs) continue;
+    const vals = Array.isArray(v) ? v.map(String) : [String(v)];
+    $$('input[type=radio],input[type=checkbox]', fs).forEach(i => { i.checked = vals.includes(i.value); });
+    const t = fs.querySelector('input.input,textarea'); if (t) t.value = String(v);
+  }
+}
+async function startExam(form) {
+  const err = $('#exam-err'); err.textContent = '';
+  const name = $('#ex-name').value.trim(), unit = $('#ex-unit').value.trim(), idRaw = $('#ex-id').value;
+  const bad = (msg, el) => { err.textContent = msg; el.focus(); };
+  if (name.length < 2) return bad('יש להזין שם מלא.', $('#ex-name'));
+  if (!unit) return bad('יש להזין יחידה.', $('#ex-unit'));
+  if (!normIlId(idRaw)) return bad('מספר תעודת הזהות אינו תקין. יש להקליד 9 ספרות.', $('#ex-id'));
+  const btn = $('button[type=submit]', form); btn.disabled = true;
+  try {
+    const r = await store.rpc('start_exam', { p_exam: form.dataset.exam, p_name: name, p_unit: unit, p_id: idRaw });
+    setTok(form.dataset.exam, r.token);
+    form.reset();
+    render(); scrollTo({ top: 0 });
+  } catch (e) {
+    btn.disabled = false;
+    err.textContent = /exam_closed/.test(e.message) ? EXAM_CLOSED + '. ' + 'רעננו את הדף לבדיקה חוזרת.' : errText(e);
+  }
+}
+function examClosedNow(msg) {
+  if (!examRun || examRun.closed) return;
+  examRun.closed = true; clearTimeout(examRun.timer);
+  const n = $('#exam-closed-note');
+  if (n) n.innerHTML = `<div class="callout key" style="margin-bottom:16px" role="alert"><span class="mark"></span><div><h4>${EXAM_CLOSED}</h4>
+    <p>${esc(msg || 'המבחן נסגר על ידי צוות הקורס. התשובות שנשמרו עד הסגירה שמורות אצל צוות הקורס.')}</p></div></div>`;
+  $$('#exam-form input, #exam-form textarea, #exam-form button').forEach(x => { x.disabled = true; });
+  setTok(examRun.examId, null);
+  n?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+async function saveDraft() {
+  if (!examRun || examRun.closed) return;
+  const form = $('#exam-form'); if (!form) return;
+  const st = $('#autosave');
+  try {
+    const r = await store.rpc('save_exam_draft', { p_token: examRun.token, p_answers: collect(form).out });
+    if (st) st.textContent = `התשובות נשמרו אוטומטית · ${new Date(r.saved_at).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })}`;
+  } catch (e) {
+    if (/exam_closed|bad_token/.test(e.message)) examClosedNow();
+    else if (st) st.textContent = 'השמירה האוטומטית נכשלה (בעיית חיבור). התשובות עדיין בדף — נסו שוב בעוד רגע.';
+  }
+}
+function scheduleSave() { if (!examRun || examRun.closed) return; clearTimeout(examRun.timer); examRun.timer = setTimeout(saveDraft, 1200); }
 
 function questionHTML(q, i, kind) {
   const name = `q_${q.id}`, opts = q.options || [];
@@ -225,19 +319,16 @@ function collect(form) {
 }
 
 async function submitExam(form) {
+  if (!examRun) return;
   const err = $('#exam-err'); err.textContent = '';
-  const name = $('#ex-name').value.trim(), unit = $('#ex-unit').value.trim(), idRaw = $('#ex-id').value;
-  const bad = (msg, el) => { err.textContent = msg; el.focus(); el.scrollIntoView({ block: 'center', behavior: 'smooth' }); };
-  if (name.length < 2) return bad('יש להזין שם מלא.', $('#ex-name'));
-  if (!unit) return bad('יש להזין יחידה.', $('#ex-unit'));
-  if (!normIlId(idRaw)) return bad('מספר תעודת הזהות אינו תקין. יש להקליד 9 ספרות.', $('#ex-id'));
   const { out } = collect(form);
   const total = $$('[data-q]', form).length, answered = Object.keys(out).length;
   if (!(await confirmBox(answered < total ? `ענית על ${answered} מתוך ${total} שאלות. להגיש בכל זאת?` : 'להגיש את המבחן? לא ניתן לשנות תשובות אחרי ההגשה.', 'הגשה'))) return;
   const btn = $('button[type=submit]', form); btn.disabled = true;
+  clearTimeout(examRun.timer);
   try {
-    const r = await store.rpc('submit_exam', { p_exam: form.dataset.exam, p_name: name, p_unit: unit, p_id: idRaw, p_answers: out });
-    form.reset();
+    const r = await store.rpc('submit_exam', { p_token: examRun.token, p_answers: out });
+    setTok(examRun.examId, null); examRun = null;
     const scoreTxt = r.score_pct != null ? `<div class="stat"><div><div class="k">ציון</div><div class="v num">${r.score_pct}</div></div>
       <div><div class="k">תוצאה</div><div class="v">${r.passed ? 'עבר/ה' : 'לא עבר/ה'}</div></div></div>`
       : `<p>${r.show_results === 'never' ? 'התוצאות יימסרו על ידי צוות הקורס.' : r.show_results === 'after_close' ? 'התוצאה תפורסם בהמשך.' : r.pending_manual ? 'חלק מהשאלות ייבדקו ידנית, והתוצאה תפורסם בהמשך.' : 'התוצאה תימסר על ידי צוות הקורס.'}</p>`;
@@ -247,7 +338,10 @@ async function submitExam(form) {
       <div class="btnrow"><button class="btn ghost sm" data-copy="${esc(r.receipt)}">${icon('copy')}העתקת הקוד</button></div>
       ${scoreTxt}<a class="btn ghost" href="#/">חזרה לדף הבית</a></div></div>`;
     scrollTo({ top: 0 });
-  } catch (e) { err.textContent = errText(e); btn.disabled = false; }
+  } catch (e) {
+    if (/exam_closed|bad_token/.test(e.message)) return examClosedNow('ההגשה לא נקלטה כי המבחן נסגר על ידי צוות הקורס. התשובות שנשמרו עד הסגירה שמורות אצל צוות הקורס.');
+    err.textContent = errText(e); btn.disabled = false;
+  }
 }
 async function checkReceipt() {
   const o = $('#rc-out'); o.textContent = '';
@@ -281,20 +375,21 @@ async function openCertificate() {
 }
 
 /* ---------------- feedback ---------------- */
+const FB_CLOSED = 'המשוב אינו פתוח כעת';
 const FB_SENT = id => `taatz-fb-sent-${id}`;
 const sentHere = id => { try { return localStorage.getItem(FB_SENT(id)) === '1'; } catch { return false; } };
 async function viewFeedback() {
   const c = data.cohort;
   const h = head('feedback', '', 'משוב הקורס');
-  if (!c) return `<div class="wrap">${h}${soon('המשוב ייפתח בהמשך')}</div>`;
+  if (!c) return `<div class="wrap">${h}${soon(FB_CLOSED, '')}</div>`;
   const [f] = await store.list('feedback_forms', { eq: { cohort_id: c.id } });
-  if (!f) return `<div class="wrap">${h}${soon('המשוב ייפתח בהמשך', 'המשוב ייפתח לקראת סיום הקורס.')}</div>`;
+  if (!f || f.mode === 'off') return `<div class="wrap">${h}${soon(FB_CLOSED, '')}</div>`;
   if (f.mode === 'external') {
     const u = safeUrl(f.external_url);
-    return `<div class="wrap">${head('feedback', c.name, f.title)}<div class="card pad stack">${f.intro ? `<p>${esc(f.intro)}</p>` : ''}
-      ${u && f.is_open ? `<a class="btn solid" href="${esc(u)}" target="_blank" rel="noopener">${icon('external')}מעבר לטופס המשוב</a>` : '<p class="muted">המשוב עדיין לא נפתח.</p>'}</div></div>`;
+    return `<div class="wrap">${head('feedback', c.name, f.title)}${u && f.is_open ? `<div class="card pad stack">${f.intro ? `<p>${esc(f.intro)}</p>` : ''}
+      <a class="btn solid" href="${esc(u)}" target="_blank" rel="noopener">${icon('external')}מעבר לטופס המשוב</a></div>` : soon(FB_CLOSED, '')}</div>`;
   }
-  if (!f.is_open) return `<div class="wrap">${head('feedback', c.name, f.title)}${soon('המשוב אינו פתוח כרגע')}</div>`;
+  if (!f.is_open) return `<div class="wrap">${head('feedback', c.name, f.title)}${soon(FB_CLOSED, '')}</div>`;
   if (sentHere(f.id) && !location.hash.includes('again')) return `<div class="wrap">${head('feedback', c.name, f.title)}<div class="callout ok"><span class="mark"></span><div>
     <h4>המשוב נשלח מהמכשיר הזה. תודה!</h4><p class="small"><a href="#/feedback?again">מילוי משוב נוסף ממכשיר משותף</a></p></div></div></div>`;
   const qs = await store.list('feedback_questions', { eq: { form_id: f.id }, order: [['sort']] });
@@ -315,7 +410,10 @@ async function submitFeedback(form) {
     try { localStorage.setItem(FB_SENT(form.dataset.form), '1'); } catch { /* not critical */ }
     $('#view').innerHTML = `<div class="wrap">${head('feedback', '', 'תודה!')}<div class="callout ok"><span class="mark"></span><div><h4>המשוב התקבל.</h4><p>תודה על הזמן ועל השיתוף.</p></div></div></div>`;
     scrollTo({ top: 0 });
-  } catch (e) { $('#fb-err').textContent = errText(e); btn.disabled = false; }
+  } catch (e) {
+    if (/feedback_closed/.test(e.message)) { $('#view').innerHTML = `<div class="wrap">${head('feedback', '', 'משוב הקורס')}${soon(FB_CLOSED, '')}</div>`; return; }
+    $('#fb-err').textContent = errText(e); btn.disabled = false;
+  }
 }
 
 /* ---------------- router ---------------- */
@@ -347,16 +445,22 @@ document.addEventListener('click', e => {
     import('./cert.js').then(m => m.downloadPDF([shownCert], m.certFileName(shownCert))).catch(err => toast(errText(err), true)).finally(() => { b.disabled = false; });
     return;
   }
+  const wb = e.target.closest('[data-welcome]');
+  if (wb) { const more = $('#welcome-more'); const open = more.hidden; more.hidden = !open; wb.setAttribute('aria-expanded', String(open)); wb.textContent = open ? 'צמצום הברכה' : 'לקריאת הברכה המלאה'; if (!open) wb.closest('.welcome').scrollIntoView({ behavior: 'smooth', block: 'start' }); return; }
   const day = e.target.closest('[data-day]');
   if (day) { selDay = day.dataset.day; $('#view').innerHTML = viewSchedule(); }
 });
 document.addEventListener('submit', e => {
+  if (e.target.id === 'exam-start') { e.preventDefault(); startExam(e.target); }
   if (e.target.id === 'exam-form') { e.preventDefault(); submitExam(e.target); }
   if (e.target.id === 'fb-form') { e.preventDefault(); submitFeedback(e.target); }
   if (e.target.id === 'receipt-form') { e.preventDefault(); checkReceipt(); }
   if (e.target.id === 'cert-form') { e.preventDefault(); openCertificate(); }
 });
+// שמירה אוטומטית של תשובות המבחן
+document.addEventListener('change', e => { if (e.target.closest('#exam-form')) scheduleSave(); });
 document.addEventListener('input', e => {
+  if (e.target.closest('#exam-form')) scheduleSave();
   if (e.target.id === 'gq') {
     const q = e.target.value.trim();
     $('#glist').innerHTML = glossList(data.glossary.filter(t => !q || t.term.includes(q) || t.definition.includes(q) || (t.category || '').includes(q)));

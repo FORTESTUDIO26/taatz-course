@@ -8,7 +8,7 @@ const TABS = [
   { r: 'schedule', t: 'עריכת לו״ז', i: 'calendar' },
   { r: 'materials', t: 'חומרים וקישורים', i: 'booklet' },
   { r: 'podcasts', t: 'פודקאסטים', i: 'mic' },
-  { r: 'content', t: 'טקסטים בדף הבית', i: 'home' },
+  { r: 'content', t: 'עמוד הבית ודבר המדור', i: 'home' },
   { r: 'glossary', t: 'מילון מונחים', i: 'glossary' },
   { r: 'exam', t: 'הגדרת מבחן', i: 'exam' },
   { r: 'feedback', t: 'הגדרת משוב', i: 'feedback' },
@@ -141,17 +141,82 @@ const BIND = {};
 function bindView(r) { BIND[r]?.(); const p = $('#pick-cohort'); p?.addEventListener('change', () => { selCohort = p.value; render(); }); }
 
 /* ---------- cohorts ---------- */
+// מצב המבחן/המשוב לתצוגה
+const hhmm = ts => new Date(ts).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' });
+function examStateOf(e) {
+  if (!e || e.mode === 'off') return { open: false, label: e ? 'כבוי — לא הוגדר אופן מבחן' : 'לא הוגדר', can: false };
+  if (e.is_open) return { open: true, label: 'פתוח', can: true };
+  if (e.grace_until && new Date(e.grace_until) > new Date()) return { open: false, label: `סגור להתחלות חדשות · מי שהתחיל יכול להגיש עד ${hhmm(e.grace_until)}`, can: true, grace: true };
+  return { open: false, label: 'סגור', can: true };
+}
+function feedbackStateOf(f) {
+  if (!f || f.mode === 'off') return { open: false, label: f ? 'כבוי — לא הוגדר אופן משוב' : 'לא הוגדר', can: false };
+  return { open: !!f.is_open, label: f.is_open ? 'פתוח' : 'סגור', can: true };
+}
+const switchHTML = (attr, id, st, what) => `<div class="sw-row"><span class="sw-name">${what}</span>
+  <button type="button" class="sw" role="switch" aria-checked="${st.open}" ${attr}="${id}" ${st.can ? '' : 'disabled'} aria-label="${what}: ${st.open ? 'פתוח — לחצי לסגירה' : 'סגור — לחצי לפתיחה'}"><span class="sw-knob"></span></button>
+  <span class="sw-label ${st.open ? 'ok' : st.grace ? 'amber' : ''}">${esc(st.label)}</span></div>`;
+
 VIEWS.cohorts = async () => {
-  const rows = cohorts.map(c => `<div class="edit-row"><div class="grow"><div class="t">${esc(c.name)} ${c.is_active ? '<span class="tag ok">פעיל — מוצג באתר</span>' : ''}
+  const [exams, forms] = await Promise.all([store.list('exams'), store.list('feedback_forms')]);
+  const rows = cohorts.map(c => {
+    const e = exams.find(x => x.cohort_id === c.id), f = forms.find(x => x.cohort_id === c.id);
+    return `<div class="edit-row" style="flex-wrap:wrap"><div class="grow"><div class="t">${esc(c.name)} ${c.is_active ? '<span class="tag ok">פעיל — מוצג באתר</span>' : ''}
       ${c.schedule_approved ? '<span class="tag">לו״ז מאושר</span>' : '<span class="tag amber">לו״ז ראשוני</span>'}</div>
       <div class="d">${c.start_date ? esc(fmtRange(c.start_date, c.end_date)) : 'ללא תאריכים'}</div></div>
       <div class="btnrow">${!c.is_active ? `<button class="btn ghost sm" data-activate="${c.id}">הפיכה לפעיל</button>` : ''}
       <button class="btn ghost sm" data-edit-cohort="${c.id}">${icon('edit')}עריכה</button>
-      <button class="btn danger sm" data-del-cohort="${c.id}" aria-label="מחיקה">${icon('trash')}</button></div></div>`).join('');
-  return `<div class="wrap">${head('users', 'מחזורים', 'המחזור הפעיל הוא זה שמוצג באתר. תוצאות ומשובים נשמרים לכל מחזור בנפרד ואינם נדרסים כשפותחים מחזור חדש.')}
+      <button class="btn danger sm" data-del-cohort="${c.id}" aria-label="מחיקה">${icon('trash')}</button></div>
+      <div class="sw-box">
+        ${switchHTML('data-exam-sw', c.id, examStateOf(e), 'מבחן')}
+        ${switchHTML('data-fb-sw', c.id, feedbackStateOf(f), 'משוב')}
+        ${switchHTML('data-welcome-sw', c.id, { open: c.show_welcome !== false, label: c.show_welcome !== false ? 'מוצג בעמוד הבית' : 'מוסתר', can: true }, 'דבר מדור ההדרכה')}
+      </div></div>`;
+  }).join('');
+  return `<div class="wrap">${head('users', 'מחזורים', 'המחזור הפעיל הוא זה שמוצג באתר. המבחן והמשוב נפתחים ונסגרים כאן, כל אחד בנפרד — בלי לסגור את שאר האתר. סגירה לא מוחקת תוכן או תוצאות.')}
     <div class="btnrow" style="margin-bottom:16px"><button class="btn solid" id="new-cohort">${icon('plus')}מחזור חדש</button></div>
     ${rows || noCohorts()}</div>`;
 };
+// פתיחה/סגירה של מבחן — משותף למסך המחזורים ולמסך הגדרת המבחן
+async function toggleExam(cohortId) {
+  const [e] = await store.list('exams', { eq: { cohort_id: cohortId } });
+  if (!e) return toast('לא הוגדר מבחן למחזור הזה (מסך "הגדרת מבחן").', true);
+  const st = examStateOf(e);
+  if (!st.open) {
+    const rules = e.mode === 'internal' ? `ציון עובר ${e.pass_score ?? '—'}, ${e.max_attempts ?? '—'} ניסיונות.` : 'המשתתפים יקבלו את הקישור למבחן החיצוני.';
+    if (!(await confirmBox(`לפתוח את המבחן של ${cohortName(cohortId)}? ${rules}`, 'פתיחת המבחן'))) return;
+    await run(() => store.rpc('set_exam_open', { p_exam: e.id, p_open: true }), 'המבחן נפתח');
+    return render();
+  }
+  const v = await formSheet(`סגירת המבחן · ${cohortName(cohortId)}`, [
+    { k: 'mode', l: 'איך לסגור?', type: 'select', opts: { graceful: 'לחסום התחלות חדשות — מי שכבר התחיל יכול לסיים', immediate: 'לסגור מיד — גם מי שבאמצע המבחן לא יוכל להגיש' } },
+    { k: 'grace', l: 'כמה דקות יש למי שכבר התחיל כדי לסיים ולהגיש?', type: 'number', min: 1, max: 600, req: true },
+  ], { mode: 'graceful', grace: 30 }, {
+    sub: 'הסגירה לא מוחקת דבר: הגשות, ציונים ותשובות שכבר נשמרו נשארים. אפשר לפתוח שוב בכל עת.<br>• <b>חסימת התחלות חדשות:</b> אי אפשר להתחיל ניסיון חדש; מי שכבר התחיל יכול להגיש עד תום הזמן שתקבעי.<br>• <b>סגירה מיידית:</b> גם הגשות פעילות נחסמות. התשובות שכבר נשמרו אוטומטית יופיעו אצלך ב״תוצאות מבחנים״ כ״נסגר לפני הגשה״.',
+    okLabel: 'סגירת המבחן', onChange: (el, x) => { const g = $('[data-fk="grace"]', el); if (g) g.hidden = x.mode !== 'graceful'; } });
+  if (!v) return;
+  const r = await run(() => store.rpc('set_exam_open', { p_exam: e.id, p_open: false, p_mode: v.mode, p_grace_minutes: v.mode === 'graceful' ? v.grace : null }));
+  toast(v.mode === 'graceful' ? `המבחן נסגר להתחלות חדשות. מי שהתחיל יכול להגיש עד ${hhmm(r.grace_until)}` : `המבחן נסגר${r.closed_starts ? ` · ${r.closed_starts} ניסיונות שלא הוגשו נשמרו כטיוטה` : ''}`);
+  render();
+}
+async function toggleFeedback(cohortId) {
+  const [f] = await store.list('feedback_forms', { eq: { cohort_id: cohortId } });
+  if (!f) return toast('לא הוגדר משוב למחזור הזה (מסך "הגדרת משוב").', true);
+  if (!f.is_open && !(await confirmBox(`לפתוח את המשוב של ${cohortName(cohortId)}?`, 'פתיחת המשוב'))) return;
+  if (f.is_open && !(await confirmBox(`לסגור את המשוב של ${cohortName(cohortId)}? התשובות שכבר נשלחו נשמרות.`, 'סגירת המשוב'))) return;
+  await run(() => store.update('feedback_forms', f.id, { is_open: !f.is_open }), f.is_open ? 'המשוב נסגר' : 'המשוב נפתח');
+  render();
+}
+document.addEventListener('click', async ev => {
+  const b = ev.target.closest('[data-exam-sw],[data-fb-sw],[data-welcome-sw]'); if (!b || b.disabled) return;
+  if (b.dataset.examSw) return toggleExam(b.dataset.examSw);
+  if (b.dataset.fbSw) return toggleFeedback(b.dataset.fbSw);
+  if (b.dataset.welcomeSw) {
+    const c = cohorts.find(x => x.id === b.dataset.welcomeSw); const show = c.show_welcome === false;
+    await run(() => store.update('cohorts', c.id, { show_welcome: show }), show ? 'הברכה מוצגת בעמוד הבית' : 'הברכה הוסתרה');
+    await loadCohorts(); render();
+  }
+});
 const cohortFields = (withClone) => [
   { k: 'name', l: 'שם המחזור', req: true, hint: 'לדוגמה: מחזור ח׳' },
   { k: 'start_date', l: 'תאריך פתיחה', type: 'date' },
@@ -369,14 +434,27 @@ VIEWS.content = async () => {
   return `<div class="wrap">${head('home', 'טקסטים בדף הבית')}
     <form id="content-form" class="card pad">
       ${fieldHTML({ k: 'course_title', l: 'שם הקורס' }, s.course_title)}${fieldHTML({ k: 'org_name', l: 'שם היחידה' }, s.org_name)}
-      ${fieldHTML({ k: 'home_intro', l: 'פסקת פתיחה', type: 'textarea', rows: 3 }, s.home_intro)}
+      ${fieldHTML({ k: 'home_intro', l: 'פסקת פתיחה בראש העמוד', type: 'textarea', rows: 3 }, s.home_intro)}
+      <div class="sect-title">דבר מדור ההדרכה</div>
+      <p class="small muted">מוצג בעמוד הבית מתחת לשם הקורס והתאריכים. הצגה/הסתרה לכל מחזור — במסך ״מחזורים״. כל שורה בתיבות הטקסט = פסקה נפרדת.</p>
+      ${fieldHTML({ k: 'w_quote', l: 'ציטוט' }, (s.welcome || {}).quote)}
+      ${fieldHTML({ k: 'w_source', l: 'מקור הציטוט' }, (s.welcome || {}).source)}
+      ${fieldHTML({ k: 'w_title', l: 'כותרת' }, (s.welcome || {}).title)}
+      ${fieldHTML({ k: 'w_intro', l: 'פתיחה (מוצגת תמיד)', type: 'textarea', rows: 3 }, (s.welcome || {}).intro)}
+      ${fieldHTML({ k: 'w_body', l: 'המשך המלל (נפתח בלחיצה על ״לקריאת הברכה המלאה״)', type: 'textarea', rows: 9 }, (s.welcome || {}).body)}
+      ${fieldHTML({ k: 'w_closing', l: 'שורת סיום' }, (s.welcome || {}).closing)}
+      ${fieldHTML({ k: 'w_signature', l: 'חתימה' }, (s.welcome || {}).signature)}
       <div class="btnrow"><button class="btn solid" type="submit">שמירה</button></div></form></div>`;
 };
 BIND.content = () => {
   $('#content-form').addEventListener('submit', async e => {
     e.preventDefault();
     const now = new Date().toISOString();
-    await run(async () => { for (const k of ['course_title', 'org_name', 'home_intro']) await store.upsert('site_settings', { key: k, value: $('#f_' + k).value.trim(), updated_at: now }, 'key'); }, 'נשמר');
+    const w = Object.fromEntries(['quote', 'source', 'title', 'intro', 'body', 'closing', 'signature'].map(k => [k, $('#f_w_' + k).value.trim()]));
+    await run(async () => {
+      for (const k of ['course_title', 'org_name', 'home_intro']) await store.upsert('site_settings', { key: k, value: $('#f_' + k).value.trim(), updated_at: now }, 'key');
+      await store.upsert('site_settings', { key: 'welcome', value: w, updated_at: now }, 'key');
+    }, 'נשמר');
   });
 };
 
@@ -425,9 +503,10 @@ VIEWS.exam = async () => {
   const totalPts = qs.reduce((a, q) => a + Number(q.points || 0), 0);
   return top + `<div class="card pad stack">
     <div class="btnrow" style="justify-content:space-between"><div><div class="t" style="font-weight:800;color:var(--deep);font-size:1.15rem">${esc(e.title)}</div>
-      <div class="small muted">מצב: <b>${MODE[e.mode]}</b> · ${e.is_open ? '<span class="tag ok">פתוח למשתתפים</span>' : '<span class="tag gray">סגור</span>'}</div></div>
+      <div class="small muted">אופן: <b>${MODE[e.mode]}</b></div></div>
       <div class="btnrow"><button class="btn ghost sm" id="exam-settings">${icon('settings')}הגדרות</button>
-      ${e.mode !== 'off' ? `<button class="btn ${e.is_open ? 'danger' : 'solid'} sm" id="exam-toggle">${e.is_open ? 'סגירת המבחן' : 'פתיחת המבחן'}</button>` : ''}</div></div>
+</div></div>
+    <div class="sw-box" style="border-top:0;padding-top:0">${switchHTML('data-exam-sw', selCohort, examStateOf(e), 'מבחן')}</div>
     ${e.mode === 'internal' ? `<div class="stat"><div><div class="k">ציון עובר</div><div class="v">${e.pass_score ?? '—'}</div></div><div><div class="k">מספר ניסיונות</div><div class="v">${e.max_attempts ?? '—'}</div></div>
       <div><div class="k">הצגת תוצאות</div><div class="v" style="font-size:.95rem">${e.show_results ? SHOW[e.show_results] : '—'}</div></div><div><div class="k">ציון קובע</div><div class="v" style="font-size:.95rem">${e.final_score_rule ? FINAL[e.final_score_rule] : '—'}</div></div><div><div class="k">כללים אושרו</div><div class="v">${e.rules_approved ? 'כן' : 'לא'}</div></div></div>
       ${!rulesOk ? '<div class="callout warn"><span class="mark"></span><div><h4>המבחן לא ייפתח עדיין</h4><p>לפני פתיחה יש לקבוע ציון עובר, מספר ניסיונות, מועד הצגת תוצאות ואיזה ציון קובע, ולסמן ״אישרתי את כללי הציון״ בהגדרות.</p></div></div>' : ''}
@@ -462,13 +541,8 @@ BIND.exam = () => {
     v.show_results ||= null;
     v.final_score_rule ||= null;
     const rulesOk = v.rules_approved && v.pass_score != null && v.max_attempts && v.show_results && v.final_score_rule;
-    if (v.mode === 'off' || (v.mode === 'internal' && !rulesOk)) v.is_open = false;
+    if (e.is_open && (v.mode === 'off' || (v.mode === 'internal' && !rulesOk))) { if (!(await confirmBox('השינוי יסגור את המבחן הפתוח. להמשיך?', 'שמירה וסגירה', true))) return; await run(() => store.rpc('set_exam_open', { p_exam: e.id, p_open: false, p_mode: 'immediate' })); }
     await run(() => store.update('exams', e.id, v), 'ההגדרות נשמרו'); render();
-  });
-  $('#exam-toggle')?.addEventListener('click', async () => {
-    const e = await getExam();
-    if (!e.is_open && !(await confirmBox(e.mode === 'internal' ? `לפתוח את המבחן למשתתפי ${cohortName(selCohort)}? ציון עובר ${e.pass_score}, ${e.max_attempts} ניסיונות.` : 'לפתוח את הקישור למבחן למשתתפים?', 'פתיחה'))) return;
-    await run(() => store.update('exams', e.id, { is_open: !e.is_open }), e.is_open ? 'המבחן נסגר' : 'המבחן נפתח'); render();
   });
   $('#release')?.addEventListener('click', async () => { const e = await getExam(); await run(() => store.update('exams', e.id, { results_released: !e.results_released }), 'עודכן'); render(); });
   $('#add-q')?.addEventListener('click', () => editExamQuestion(null));
@@ -550,7 +624,8 @@ VIEWS.feedback = async () => {
   const qs = await store.list('feedback_questions', { eq: { form_id: f.id }, order: [['sort']] });
   return top + `<div class="card pad stack"><div class="btnrow" style="justify-content:space-between"><div><div style="font-weight:800;color:var(--deep);font-size:1.15rem">${esc(f.title)}</div>
     <div class="small muted">מצב: <b>${MODE[f.mode]}</b> · ${f.anonymous ? '<span class="tag ok">אנונימי</span>' : '<span class="tag amber">מזוהה</span>'} · ${f.is_open ? '<span class="tag ok">פתוח</span>' : '<span class="tag gray">סגור</span>'}</div></div>
-    <div class="btnrow"><button class="btn ghost sm" id="fb-settings">${icon('settings')}הגדרות</button>${f.mode !== 'off' ? `<button class="btn ${f.is_open ? 'danger' : 'solid'} sm" id="fb-toggle">${f.is_open ? 'סגירת המשוב' : 'פתיחת המשוב'}</button>` : ''}</div></div>
+    <div class="btnrow"><button class="btn ghost sm" id="fb-settings">${icon('settings')}הגדרות</button></div></div>
+    <div class="sw-box" style="border-top:0;padding-top:0">${switchHTML('data-fb-sw', selCohort, feedbackStateOf(f), 'משוב')}</div>
     ${f.mode === 'external' ? `<p>קישור חיצוני: ${safeUrl(f.external_url) ? `<a class="ltr" href="${esc(f.external_url)}" target="_blank" rel="noopener">${esc(f.external_url)}</a>` : '<span class="req">לא הוגדר</span>'}</p>` : ''}</div>
     ${f.mode !== 'external' ? `<div class="sect-title">שאלות (${qs.length})</div><div class="btnrow" style="margin-bottom:12px"><button class="btn solid" id="add-fq">${icon('plus')}שאלה חדשה</button></div>
     ${qs.map((q, i) => `<div class="edit-row"><div class="grow"><div class="d">${i + 1} · ${esc(QTYPES_FB[q.qtype])}${q.section ? ' · ' + esc(q.section) : ''}${q.required ? ' · חובה' : ''}</div><div class="t">${esc(q.prompt)}</div></div>
@@ -575,7 +650,6 @@ BIND.feedback = () => {
     const v = await formSheet('הגדרות המשוב', fbFields, f, { onChange: (el, x) => { $('[data-fk="external_url"]', el).hidden = x.mode !== 'external'; } });
     if (!v) return; await run(() => store.update('feedback_forms', f.id, v), 'נשמר'); render();
   });
-  $('#fb-toggle')?.addEventListener('click', async () => { const f = await getForm(); await run(() => store.update('feedback_forms', f.id, { is_open: !f.is_open }), f.is_open ? 'המשוב נסגר' : 'המשוב נפתח'); render(); });
   $('#add-fq')?.addEventListener('click', () => editFbQuestion(null));
 };
 async function editFbQuestion(id) {
@@ -630,6 +704,7 @@ VIEWS.results = async () => {
   const subs = await store.list('exam_submissions', { ...(selCohort !== '*' ? { eq: { cohort_id: selCohort } } : {}), order: [['submitted_at', false]] });
   const exams = selCohort !== '*' ? await store.list('exams', { eq: { cohort_id: selCohort } }) : [];
   const people = exams[0] ? await peopleOf(exams[0].id) : [];
+  let starts = []; if (exams[0]) { try { starts = await store.rpc('exam_open_starts', { p_exam: exams[0].id }); } catch { starts = []; } }
   const counted = subs.filter(s => s.status === 'counted'), graded = counted.filter(s => s.score_pct != null);
   const avg = graded.length ? fmtScore(graded.reduce((a, s) => a + Number(s.score_pct), 0) / graded.length) : '—';
   const byPerson = Object.fromEntries(people.map(p => [p.id_number, p]));
@@ -647,7 +722,12 @@ VIEWS.results = async () => {
         <td>${s.attempt_no}</td><td>${esc(fmtDateTime(s.submitted_at))}</td><td>${statusTag(s.status)}</td>
         <td>${s.score_pct != null ? `<b>${fmtScore(s.score_pct)}</b> ${s.passed ? '<span class="tag ok">עבר</span>' : '<span class="tag wine">נכשל</span>'}` : s.needs_manual ? '<span class="tag amber">לבדיקה</span>' : '—'}</td>
         <td>${p ? (p.pending ? 'ממתין' : `${fmtScore(p.final_score)} ${p.passed ? '✓' : ''}`) : '—'}</td>
-        <td><button class="btn ghost sm" data-sub="${s.id}">פרטים</button></td></tr>`; }).join('')}</tbody></table></div>` : '<div class="empty"><b>אין עדיין הגשות</b></div>'}</div>`;
+        <td><button class="btn ghost sm" data-sub="${s.id}">פרטים</button></td></tr>`; }).join('')}</tbody></table></div>` : '<div class="empty"><b>אין עדיין הגשות</b></div>'}
+    ${starts.length ? `<div class="sect-title">ניסיונות שהתחילו ולא הוגשו (${starts.length})</div>
+    <p class="small muted">״בתהליך״ = הנבחן/ת עדיין יכול/ה להגיש. ״נסגר לפני הגשה״ = המבחן נסגר מיד; התשובות שנשמרו אוטומטית עד הסגירה מופיעות כאן ואינן נספרות כהגשה.</p>
+    <div class="tbl-wrap"><table class="tbl"><thead><tr><th>שם</th><th>יחידה</th><th>ת״ז</th><th>התחלה</th><th>מצב</th><th>שאלות שנענו</th><th>שמירה אחרונה</th></tr></thead><tbody>
+      ${starts.map(t => `<tr><td><b>${esc(t.full_name)}</b></td><td>${esc(t.unit)}</td><td><span class="ltr">${esc(t.id_number)}</span></td><td>${esc(fmtDateTime(t.started_at))}</td>
+        <td>${t.status === 'started' ? '<span class="tag amber">בתהליך</span>' : '<span class="tag gray">נסגר לפני הגשה</span>'}</td><td>${t.answered}</td><td>${t.draft_saved_at ? esc(fmtDateTime(t.draft_saved_at)) : '—'}</td></tr>`).join('')}</tbody></table></div>` : ''}</div>`;
 };
 BIND.results = () => {
   $('#export-res')?.addEventListener('click', async () => {

@@ -351,3 +351,28 @@ table.tbl{width:100%;border-collapse:collapse;font-size:.93rem}
 @media print{.hdr,.side,.demo-banner,.foot .social{display:none}.shell{padding-top:0}}
 .bar i.indet{animation:indet 1.2s ease-in-out infinite}
 @keyframes indet{0%{margin-inline-start:-40%}100%{margin-inline-start:100%}}
+
+/* ============ דבר מדור ההדרכה ============ */
+.welcome{position:relative;background:#fff;border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--shadow);padding:clamp(20px,4vw,30px);margin:0 0 22px;overflow:hidden}
+.welcome::before{content:"";position:absolute;inset-block:0;inset-inline-start:0;width:5px;background:linear-gradient(180deg,var(--amber),var(--sky))}
+.welcome-quote{margin:6px 0 16px;text-align:center}
+.welcome-quote blockquote{margin:0;font-size:clamp(1.15rem,3.6vw,1.45rem);font-weight:700;color:var(--navy);line-height:1.6}
+.welcome-quote figcaption{margin-top:4px;font-weight:700;color:var(--blue);font-size:.98rem}
+.welcome h2{font-size:clamp(1.25rem,3.8vw,1.55rem);color:var(--deep);margin:0 0 10px}
+.welcome-text p{margin:0 0 .45em;font-size:1.02rem;line-height:1.75}
+.welcome-sign{margin-top:14px;display:flex;flex-direction:column;gap:2px;color:var(--deep)}
+.welcome-sign span{font-weight:700}
+.welcome-sign b{font-weight:800;color:var(--navy)}
+.welcome-toggle{margin-top:10px;min-height:44px}
+
+/* ============ מתגים (ניהול) ============ */
+.sw-box{flex-basis:100%;display:flex;flex-wrap:wrap;gap:8px 22px;padding-top:10px;border-top:1px solid var(--line2);margin-top:4px}
+.sw-row{display:flex;align-items:center;gap:9px;min-height:44px}
+.sw-name{font-weight:800;color:var(--deep);min-width:3.2em}
+.sw{position:relative;width:52px;height:30px;border-radius:99px;border:0;background:#C6D3DE;cursor:pointer;flex:none;transition:background .2s}
+.sw[aria-checked="true"]{background:var(--ok)}
+.sw:disabled{opacity:.45;cursor:not-allowed}
+.sw-knob{position:absolute;top:3px;inset-inline-start:3px;width:24px;height:24px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.25);transition:inset-inline-start .2s var(--ease)}
+.sw[aria-checked="true"] .sw-knob{inset-inline-start:25px}
+.sw-label{font-size:.9rem;color:var(--muted);font-weight:600}
+.sw-label.ok{color:var(--ok)}.sw-label.amber{color:var(--amber-ink)}

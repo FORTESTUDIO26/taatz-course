@@ -1,15 +1,54 @@
 # Whitelist: only the site code is tracked. Everything else in this folder
-# (presentations, source images, exports) stays local and is never pushed.
+# (presentations, podcasts, source images, PDF exports) stays local and is
+# never pushed. Large sources are backed up outside git (see README).
 /*
 !/.gitignore
 !/README.md
 !/docs/
 !/supabase/
 !/tools/
-# never commit secrets or local data
+
+# Secrets and credentials - never commit, even inside tracked folders
 *.env
 .env*
+*.pem
+*.key
+*secret*
+*password*
+*credentials*
 supabase/.temp/
+supabase/.branches/
 supabase/secrets*
 
-tools/node_modules/
+# Local settings
+.claude/
+*.local
+*.local.*
+.vscode/
+.idea/
+
+# Backups and temporary files
+*.bak
+*.backup
+*.old
+*.orig
+*.tmp
+*.temp
+*~
+~$*
+*.swp
+
+# OS files
+Thumbs.db
+desktop.ini
+.DS_Store
+
+# Dependencies and test downloads
+node_modules/
+*.zip
+*.pdf
+*.pptx
+*.mp4
+*.MP4
+*.mp3
+*.m4a
