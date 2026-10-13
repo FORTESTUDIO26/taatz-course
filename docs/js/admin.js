@@ -507,6 +507,7 @@ VIEWS.exam = async () => {
       <div class="btnrow"><button class="btn ghost sm" id="exam-settings">${icon('settings')}הגדרות</button>
 </div></div>
     <div class="sw-box" style="border-top:0;padding-top:0">${switchHTML('data-exam-sw', selCohort, examStateOf(e), 'מבחן')}</div>
+    ${historyBox(e)}
     ${e.mode === 'internal' ? `<div class="stat"><div><div class="k">ציון עובר</div><div class="v">${e.pass_score ?? '—'}</div></div><div><div class="k">מספר ניסיונות</div><div class="v">${e.max_attempts ?? '—'}</div></div>
       <div><div class="k">הצגת תוצאות</div><div class="v" style="font-size:.95rem">${e.show_results ? SHOW[e.show_results] : '—'}</div></div><div><div class="k">ציון קובע</div><div class="v" style="font-size:.95rem">${e.final_score_rule ? FINAL[e.final_score_rule] : '—'}</div></div><div><div class="k">כללים אושרו</div><div class="v">${e.rules_approved ? 'כן' : 'לא'}</div></div></div>
       ${!rulesOk ? '<div class="callout warn"><span class="mark"></span><div><h4>המבחן לא ייפתח עדיין</h4><p>לפני פתיחה יש לקבוע ציון עובר, מספר ניסיונות, מועד הצגת תוצאות ואיזה ציון קובע, ולסמן ״אישרתי את כללי הציון״ בהגדרות.</p></div></div>' : ''}
@@ -515,10 +516,23 @@ VIEWS.exam = async () => {
     </div>
     ${e.mode !== 'external' ? `<div class="sect-title">שאלות (${qs.length}) · סה״כ ${totalPts} נקודות</div>
     <div class="btnrow" style="margin-bottom:12px"><button class="btn solid" id="add-q">${icon('plus')}שאלה חדשה</button><button class="btn ghost" id="preview-types">תצוגת סוגי השאלות</button></div>
-    ${qs.map((q, i) => { const k = keys.find(x => x.question_id === q.id); return `<div class="edit-row"><div class="grow"><div class="d">שאלה ${i + 1} · ${esc(QTYPES_EXAM[q.qtype])} · ${q.points} נק׳ ${q.qtype !== 'open' && !k ? '<span class="req">· חסרה תשובה נכונה</span>' : ''}</div><div class="t">${esc(q.prompt)}</div></div>
+    ${qs.map((q, i) => { const k = keys.find(x => x.question_id === q.id); return `<div class="edit-row"><div class="grow"><div class="d">שאלה ${i + 1} · ${esc(QTYPES_EXAM[q.qtype])} · ${q.points} נק׳ ${q.import_batch ? '· <span class="tag gray">מיובא</span> ' : ''}${q.qtype !== 'open' && !k ? '<span class="req">· חסרה תשובה נכונה</span>' : ''}</div><div class="t">${esc(q.prompt)}</div></div>
       <div class="btnrow"><button class="btn ghost sm" data-edit-q="${q.id}" aria-label="עריכה">${icon('edit')}</button><button class="btn danger sm" data-del-q="${q.id}" aria-label="מחיקה">${icon('trash')}</button></div></div>`; }).join('')
       || '<div class="empty"><b>אין עדיין שאלות</b>השאלות יוזנו לאחר שתספקי אותן.</div>'}` : ''}</div>`;
 };
+// מבחן שיובא מהמערכת הקודמת: הכללים שם מוצגים לתיעוד בלבד ואינם כללי המחזור
+const HIST_LABELS = { version: 'גרסת שאלות', questions: 'מספר שאלות', time_limit_minutes: 'זמן (דקות)', pass_threshold_shown: 'סף ״עבר״ שהוצג', score: 'חישוב ציון', attempts_limit: 'מגבלת ניסיונות', attempt_no: 'מספר ניסיון', timezone: 'מועדים', unit: 'יחידה' };
+function historyBox(e) {
+  if (!e.historical_rules) return '';
+  const h = e.historical_rules;
+  return `<div class="callout"><span class="mark"></span><div><h4>מבחן היסטורי — יובא מהמערכת הקודמת</h4>
+    <p class="small">ההגדרות שהיו במערכת הקודמת מוצגות לתיעוד בלבד. הן אינן כללי מבחן מאושרים, לא נקבע לפיהן ציון קובע או זכאות, ולא יופקו טופסי סיום בלי אישורך.</p>
+    <ul class="small" style="margin:6px 0 0">${Object.entries(HIST_LABELS).filter(([k]) => h[k] != null).map(([k, l]) => `<li><b>${l}:</b> ${esc(h[k])}</li>`).join('')}</ul></div></div>`;
+}
+const FLAG_HE = { no_unit: 'יחידה לא נרשמה במקור', invalid_id_checksum: 'ת״ז לא תקינה (ספרת ביקורת)', same_name_other_id: 'אותו שם עם ת״ז אחרת במחזור', assigned_by_nearest_date: 'שויך לפי תאריך סמוך' };
+const flagTags = s => (s.review_flags || []).filter(f => f !== 'no_unit').map(f => `<span class="tag amber">${esc(FLAG_HE[f] || f)}</span>`).join(' ');
+const passTag = s => s.passed === true ? '<span class="tag ok">עבר</span>' : s.passed === false ? '<span class="tag wine">נכשל</span>' : '';
+
 const examFields = [
   { k: 'title', l: 'כותרת', req: true },
   { k: 'instructions', l: 'הנחיות למשתתפים', type: 'textarea', rows: 3 },
@@ -759,20 +773,24 @@ VIEWS.results = async () => {
   const counted = subs.filter(s => s.status === 'counted'), graded = counted.filter(s => s.score_pct != null);
   const avg = graded.length ? fmtScore(graded.reduce((a, s) => a + Number(s.score_pct), 0) / graded.length) : '—';
   const byPerson = Object.fromEntries(people.map(p => [p.id_number, p]));
+  const importedN = subs.filter(s => s.import_batch).length;
+  const imp = await importPanel();
   return `<div class="wrap">${head('chart', 'תוצאות מבחנים', 'כל ניסיון נשמר בנפרד ואינו נדרס. מגבלת הניסיונות נבדקת בשרת לפי ת״ז ומחזור.')}
     ${needsServer()}
     <div class="callout" style="margin-bottom:14px"><span class="mark"></span><div><p class="small">הפרטים (שם, יחידה, ת״ז) הוזנו על ידי הנבחנים בטופס. ת״ז נבדקה לתקינות בלבד — <b>זה אינו אימות זהות</b>.
       הגשה מעבר למספר הניסיונות המותר נשמרת כ״חריגה״ ואינה נספרת. מבחן חוזר מאשרים בכפתור ״אישור מבחן חוזר״.</p></div></div>
+    ${imp}
+    ${importedN ? `<p class="small muted">${importedN} מתוך ${subs.length} ההגשות כאן <span class="tag gray">מיובאות</span> מהמערכת הקודמת: הציון, המועד והתשובות נשמרו כפי שנרשמו שם, בלי חישוב מחדש ובלי קביעת מעבר או ציון קובע.</p>` : ''}
     <div class="toolbar">${cohortPicker(true)}<button class="btn ghost" id="export-res" ${subs.length ? '' : 'disabled'}>${icon('download')}ייצוא ל-Excel</button></div>
     <div class="stat"><div><div class="k">הגשות</div><div class="v">${subs.length}</div></div><div><div class="k">נבחנים (לפי ת״ז)</div><div class="v">${new Set(subs.map(s => s.cohort_id + s.id_number)).size}</div></div>
       <div><div class="k">ממוצע ניסיונות שנספרו</div><div class="v">${avg}</div></div><div><div class="k">עברו (ציון קובע)</div><div class="v">${people.filter(p => p.passed).length}</div></div>
       <div><div class="k">ממתינים לבדיקה ידנית</div><div class="v">${counted.filter(s => s.needs_manual && s.manual_points == null).length}</div></div></div>
     ${subs.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>שם</th><th>יחידה</th><th>ת״ז</th>${selCohort === '*' ? '<th>מחזור</th>' : ''}<th>ניסיון</th><th>מועד</th><th>סטטוס</th><th>ציון</th><th>ציון קובע</th><th></th></tr></thead><tbody>
       ${subs.map(s => { const p = byPerson[s.id_number];
-        return `<tr><td><b>${esc(s.full_name)}</b></td><td>${esc(s.unit)}</td><td><span class="ltr">${esc(s.id_number)}</span></td>${selCohort === '*' ? `<td>${esc(cohortName(s.cohort_id))}</td>` : ''}
-        <td>${s.attempt_no}</td><td>${esc(fmtDateTime(s.submitted_at))}</td><td>${statusTag(s.status)}</td>
-        <td>${s.score_pct != null ? `<b>${fmtScore(s.score_pct)}</b> ${s.passed ? '<span class="tag ok">עבר</span>' : '<span class="tag wine">נכשל</span>'}` : s.needs_manual ? '<span class="tag amber">לבדיקה</span>' : '—'}</td>
-        <td>${p ? (p.pending ? 'ממתין' : `${fmtScore(p.final_score)} ${p.passed ? '✓' : ''}`) : '—'}</td>
+        return `<tr><td><b>${esc(s.full_name)}</b></td><td>${s.unit ? esc(s.unit) : '<span class="muted">—</span>'}</td><td><span class="ltr">${esc(s.id_number)}</span></td>${selCohort === '*' ? `<td>${esc(cohortName(s.cohort_id))}</td>` : ''}
+        <td>${s.attempt_no}</td><td>${esc(fmtDateTime(s.submitted_at))}</td><td>${statusTag(s.status)}${s.import_batch ? ' <span class="tag gray">מיובא</span>' : ''} ${flagTags(s)}</td>
+        <td>${s.score_pct != null ? `<b>${fmtScore(s.score_pct)}</b> ${passTag(s)}` : s.needs_manual ? '<span class="tag amber">לבדיקה</span>' : '—'}</td>
+        <td>${s.import_batch ? '<span class="muted" title="מבחן היסטורי — לא נקבע ציון קובע">—</span>' : p ? (p.pending ? 'ממתין' : `${fmtScore(p.final_score)} ${p.passed ? '✓' : ''}`) : '—'}</td>
         <td><button class="btn ghost sm" data-sub="${s.id}">פרטים</button></td></tr>`; }).join('')}</tbody></table></div>` : '<div class="empty"><b>אין עדיין הגשות</b></div>'}
     ${starts.length ? `<div class="sect-title">ניסיונות שהתחילו ולא הוגשו (${starts.length})</div>
     <p class="small muted">״בתהליך״ = הנבחן/ת עדיין יכול/ה להגיש. ״נסגר לפני הגשה״ = המבחן נסגר מיד; התשובות שנשמרו אוטומטית עד הסגירה מופיעות כאן ואינן נספרות כהגשה.</p>
@@ -780,6 +798,38 @@ VIEWS.results = async () => {
       ${starts.map(t => `<tr><td><b>${esc(t.full_name)}</b></td><td>${esc(t.unit)}</td><td><span class="ltr">${esc(t.id_number)}</span></td><td>${esc(fmtDateTime(t.started_at))}</td>
         <td>${t.status === 'started' ? '<span class="tag amber">בתהליך</span>' : '<span class="tag gray">נסגר לפני הגשה</span>'}</td><td>${t.answered}</td><td>${t.draft_saved_at ? esc(fmtDateTime(t.draft_saved_at)) : '—'}</td></tr>`).join('')}</tbody></table></div>` : ''}</div>`;
 };
+// אצוות ייבוא: סיכום, רשומות שלא יובאו, וביטול אצווה (מנהלת בלבד)
+const OUTCOME_HE = { skipped_test: 'רשומת בדיקה / הוחרגה', skipped_duplicate: 'כפילות זהה', skipped_pending: 'ממתין להחלטה על שיוך' };
+async function importPanel() {
+  let batches = []; try { batches = await store.list('import_batches', { order: [['created_at', false]] }); } catch { return ''; }
+  if (!batches.length) return '';
+  const out = [];
+  for (const b of batches) {
+    const recs = await store.list('import_records', { eq: { batch_id: b.id }, order: [['source_entity'], ['outcome']] });
+    const notIn = recs.filter(r => OUTCOME_HE[r.outcome]);
+    const cnt = k => recs.filter(r => r.outcome === k).length;
+    out.push(`<details class="card pad" style="margin-bottom:14px"><summary><b>היסטוריה מיובאת</b> · ${esc(b.source)} · ${esc(fmtDateTime(b.created_at))}
+      · יובאו ${cnt('imported')} רשומות · לא יובאו ${notIn.length}</summary>
+      <p class="small muted" style="margin-top:8px">אצווה <span class="ltr">${esc(b.id)}</span>. כל רשומה מיובאת מסומנת ״מיובא״ ונושאת את מזהה המקור שלה. הרצה חוזרת אינה יוצרת כפילויות.</p>
+      ${notIn.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>סוג</th><th>מועד</th><th>שם (כפי שנרשם)</th><th>סיבה</th></tr></thead><tbody>
+        ${notIn.map(r => { const p = r.payload || {}; return `<tr><td>${r.source_entity === 'TestResult' ? 'ניסיון מבחן' : r.source_entity === 'Feedback' ? 'משוב (אנונימי)' : esc(r.source_entity)}</td>
+          <td>${esc(fmtDateTime(p.completedAt || p.submittedAt || ''))}</td><td>${r.source_entity === 'TestResult' ? esc(`${p.firstName || ''} ${p.lastName || ''}`) : '—'}</td>
+          <td>${esc(OUTCOME_HE[r.outcome])}</td></tr>`; }).join('')}</tbody></table></div>` : ''}
+      <div class="btnrow" style="margin-top:10px"><button class="btn danger sm" data-undo-import="${esc(b.id)}">ביטול אצוות הייבוא</button>
+      <span class="small muted">מוחק רק את מה שנוצר בייבוא הזה. לא ניתן אם נוספו נתונים אחרים למחזורים שנוצרו בו.</span></div></details>`);
+  }
+  return out.join('');
+}
+document.addEventListener('click', async e => {
+  const b = e.target.closest('[data-undo-import]'); if (!b) return;
+  const v = await formSheet('ביטול אצוות ייבוא', [{ k: 'confirm', l: 'להמשך יש להקליד: ביטול', req: true }], {},
+    { sub: 'כל המחזורים, המבחנים, ההגשות והמשובים שנוצרו בייבוא הזה יימחקו. נתונים שהוספת בעצמך לא יימחקו. הגיבוי הפרטי נשמר.', okLabel: 'ביטול הייבוא' });
+  if (!v) return;
+  if (v.confirm !== 'ביטול') return toast('לא בוצע — יש להקליד ״ביטול״', true);
+  await run(() => store.rpc('import_undo', { p_batch: b.dataset.undoImport }), 'הייבוא בוטל');
+  await loadCohorts(); render();
+});
+
 BIND.results = () => {
   $('#export-res')?.addEventListener('click', async () => {
     const subs = await store.list('exam_submissions', { ...(selCohort !== '*' ? { eq: { cohort_id: selCohort } } : {}), order: [['cohort_id'], ['full_name'], ['attempt_no']] });
@@ -788,12 +838,13 @@ BIND.results = () => {
     const single = examIds.length === 1;
     const people = single ? Object.fromEntries((await peopleOf(examIds[0])).map(p => [p.id_number, p])) : {};
     const ansText = (q, a) => a == null ? '' : q.qtype === 'truefalse' ? (a === 'true' ? 'נכון' : 'לא נכון') : Array.isArray(a) ? a.map(x => q.options.find(o => o.id === x)?.text || x).join(' | ') : (q.options?.find(o => o.id === a)?.text || a);
-    const header = ['מחזור', 'שם (כפי שהוזן)', 'יחידה', 'ת״ז (נבדקה לתקינות, לא אומתה)', 'ניסיון', 'סטטוס', 'מועד הגשה', 'ציון הניסיון', 'עבר בניסיון', 'ציון קובע', 'עבר (ציון קובע)', 'קוד אישור', 'נקודות אוטומטיות', 'נקודות ידניות', 'סה״כ נקודות', ...(single ? qs.map((q, i) => `ש${i + 1}: ${q.prompt}`) : [])];
+    const header = ['מחזור', 'שם (כפי שהוזן)', 'יחידה', 'ת״ז (נבדקה לתקינות, לא אומתה)', 'ניסיון', 'סטטוס', 'מועד הגשה', 'ציון הניסיון', 'עבר בניסיון', 'ציון קובע', 'עבר (ציון קובע)', 'קוד אישור', 'נקודות אוטומטיות', 'נקודות ידניות', 'סה״כ נקודות', 'מקור', 'סימונים לבדיקה', 'משך (דקות)', ...(single ? qs.map((q, i) => `ש${i + 1}: ${q.prompt}`) : [])];
     const rows = subs.map(s => { const p = people[s.id_number];
       return [cohortName(s.cohort_id), s.full_name, s.unit, s.id_number, s.attempt_no, STATUS[s.status], fmtDateTime(s.submitted_at),
         s.score_pct ?? (s.needs_manual ? 'ממתין לבדיקה' : ''), s.passed === true ? 'כן' : s.passed === false ? 'לא' : '',
         p ? (p.pending ? 'ממתין' : p.final_score ?? '') : '', p ? (p.passed === true ? 'כן' : p.passed === false ? 'לא' : '') : '',
-        s.receipt, s.auto_points, s.manual_points ?? '', s.total_points, ...(single ? qs.map(q => ansText(q, s.answers?.[q.id])) : [])]; });
+        s.receipt, s.auto_points, s.manual_points ?? '', s.total_points, s.import_batch ? 'מיובא מהמערכת הקודמת' : 'הגשה באתר',
+        (s.review_flags || []).map(f => FLAG_HE[f] || f).join('; '), s.time_spent_sec != null ? Math.round(s.time_spent_sec / 6) / 10 : '', ...(single ? qs.map(q => ansText(q, s.answers?.[q.id])) : [])]; });
     await downloadXLSX(`תוצאות מבחן - ${selCohort === '*' ? 'כל המחזורים' : cohortName(selCohort)}.xlsx`, 'תוצאות', header, rows, [3, 11]);
   });
 };
@@ -805,12 +856,13 @@ async function showSubmission(id) {
   const show = (q, a) => a == null ? '<span class="muted">לא נענתה</span>' : q.qtype === 'truefalse' ? (a === 'true' ? 'נכון' : 'לא נכון') : Array.isArray(a) ? a.map(x => esc(q.options.find(o => o.id === x)?.text || x)).join('<br>') : esc(q.options?.find(o => o.id === a)?.text || a);
   const openPts = qs.filter(q => q.qtype === 'open' || !keys.find(k => k.question_id === q.id)).reduce((t, q) => t + Number(q.points), 0);
   const el = sheet(`<h3>${esc(s.full_name)} · ניסיון ${s.attempt_no}</h3>
-    <p class="sub">יחידה: ${esc(s.unit)} · ת״ז <span class="ltr">${esc(s.id_number)}</span> · ${esc(fmtDateTime(s.submitted_at))}<br>
+    ${s.import_batch ? `<div class="callout" style="margin:6px 0 10px"><span class="mark"></span><div><p class="small"><b>מיובא מהמערכת הקודמת.</b> הציון, המועד והתשובות נשמרו כפי שנרשמו שם${s.time_spent_sec != null ? ` · משך: ${Math.floor(s.time_spent_sec / 60)}:${String(s.time_spent_sec % 60).padStart(2, '0')}` : ''}. מספר הניסיון חושב לפי סדר ההגשות.</p>${flagTags(s) ? `<p>${flagTags(s)}</p>` : ''}</div></div>` : ''}
+    <p class="sub">יחידה: ${s.unit ? esc(s.unit) : '—'} · ת״ז <span class="ltr">${esc(s.id_number)}</span> · ${esc(fmtDateTime(s.submitted_at))}<br>
     <span class="small">הפרטים הוזנו בטופס; ת״ז נבדקה לתקינות בלבד ואינה אימות זהות. קוד אישור <span class="ltr">${esc(s.receipt)}</span></span></p>
     <div class="stat"><div><div class="k">סטטוס</div><div class="v" style="font-size:1rem">${STATUS[s.status]}</div></div><div><div class="k">ציון הניסיון</div><div class="v">${fmtScore(s.score_pct)}</div></div>
-      ${p ? `<div><div class="k">ציון קובע</div><div class="v">${p.pending ? 'ממתין' : fmtScore(p.final_score)}</div></div><div><div class="k">ניסיונות שנספרו / מותרים</div><div class="v">${p.attempts} / ${p.allowed}</div></div>` : ''}</div>
+      ${p && !s.import_batch ? `<div><div class="k">ציון קובע</div><div class="v">${p.pending ? 'ממתין' : fmtScore(p.final_score)}</div></div><div><div class="k">ניסיונות שנספרו / מותרים</div><div class="v">${p.attempts} / ${p.allowed}</div></div>` : ''}</div>
     <div class="btnrow" style="margin-bottom:10px">
-      ${p && p.passed !== true ? `<button class="btn solid sm" data-retake>אישור מבחן חוזר</button>` : ''}
+      ${p && p.passed !== true && !s.import_batch ? `<button class="btn solid sm" data-retake>אישור מבחן חוזר</button>` : ''}
       ${s.status !== 'voided' ? '<button class="btn danger sm" data-status="voided">ביטול הניסיון</button>' : ''}
       ${s.status !== 'counted' ? '<button class="btn ghost sm" data-status="counted">ספירת הניסיון</button>' : ''}</div>
     ${s.status_note ? `<p class="small muted">הערה: ${esc(s.status_note)}</p>` : ''}

@@ -298,5 +298,67 @@ ok(/missing_required/.test(await fails('anon', null, `select submit_feedback($1,
 await as('anon', null, `select submit_feedback($1, null, $2::jsonb)`, [F2, JSON.stringify({ [RQ]: ['a', 'b'], [TQ]: 'תשובה' })]);
 ok((await rows('authenticated', ADMIN, `select count(*)::int c from feedback_responses where form_id = $1`, [F2]))[0].c === 2, 'משוב מלא עם שאלות חובה: נשמר');
 ok((await rows('authenticated', ADMIN, `select show_welcome from cohorts where id = $1`, [C8]))[0].show_welcome === true, 'ברירת מחדל: "דבר מדור ההדרכה" מוצג במחזור חדש');
+console.log('\nייבוא היסטוריה');
+{
+  const u = () => crypto.randomUUID();
+  const HC = u(), HE = u(), HQ1 = u(), HQ2 = u(), HF = u(), HFQ = u(), S1 = u();
+  const P = {
+    batch: { id: 'test-import-1', source: 'בדיקה' },
+    cohorts: [{ id: HC, name: 'מחזור היסטורי', start_date: '2025-07-31', end_date: '2025-07-31' }],
+    exams: [{ id: HE, cohort_id: HC, title: 'מבחן היסטורי', historical_rules: { pass_display: 70 } }],
+    questions: [
+      { id: HQ1, exam_id: HE, sort: 1, qtype: 'single', prompt: 'ש1', options: [{ id: 'a', text: 'א' }, { id: 'b', text: 'ב' }], points: 1, correct: 'a', source_id: 'q1' },
+      { id: HQ2, exam_id: HE, sort: 2, qtype: 'multi', prompt: 'ש2', options: [{ id: 'a', text: 'א' }, { id: 'b', text: 'ב' }], points: 1, correct: ['a', 'b'], source_id: 'q2', explanation: 'הסבר' }],
+    submissions: [
+      { id: S1, exam_id: HE, cohort_id: HC, full_name: 'נבחנת היסטורית', unit: null, id_number: '000000018', attempt_no: 1, answers: { [HQ1]: 'a', [HQ2]: ['a'] },
+        auto_points: 1, total_points: 2, score_pct: 50, submitted_at: '2025-07-31T10:00:00.000Z', time_spent_sec: 600, review_flags: ['no_unit'], source_id: 's1' },
+      { id: u(), exam_id: HE, cohort_id: HC, full_name: 'ת״ז לא תקינה', unit: null, id_number: '123456789', attempt_no: 1, answers: {},
+        auto_points: 0, total_points: 2, score_pct: 0, submitted_at: '2025-07-31T10:05:00.000Z', time_spent_sec: 60, review_flags: ['invalid_id_checksum'], source_id: 's2' }],
+    feedback_forms: [{ id: HF, cohort_id: HC, title: 'משוב', intro: '', sections: [] }],
+    feedback_questions: [{ id: HFQ, form_id: HF, sort: 1, section: null, qtype: 'rating5', prompt: 'דירוג', required: true }],
+    feedback_responses: [{ form_id: HF, cohort_id: HC, answers: { [HFQ]: 4 }, submitted_on: '2025-07-31', source_id: 'f1' }],
+    records: [{ source_entity: 'TestResult', source_id: 's1', outcome: 'imported', target_table: 'exam_submissions', target_id: S1 },
+      { source_entity: 'TestResult', source_id: 's9', outcome: 'skipped_test', note: 'רשומת בדיקה' }],
+  };
+  const pj = JSON.stringify(P);
+  ok(!!(await fails('anon', null, `select import_apply($1::jsonb, false)`, [pj])), 'ייבוא: הציבור לא יכול להריץ');
+  ok(!!(await fails('authenticated', OTHER, `select import_apply($1::jsonb, false)`, [pj])), 'ייבוא: משתמש שאינו מנהלת לא יכול להריץ');
+  const dry = (await rows('authenticated', ADMIN, `select import_apply($1::jsonb, true) r`, [pj]))[0].r;
+  const cnt = async () => (await rows('authenticated', ADMIN, `select (select count(*) from exam_submissions where import_batch is not null)::int s,
+    (select count(*) from cohorts where import_batch is not null)::int c, (select count(*) from import_batches)::int b, (select count(*) from feedback_responses where import_batch is not null)::int f`))[0];
+  const c0 = await cnt();
+  ok(dry.status === 'dry_run' && dry.cohorts?.[0]?.submissions === 2 && dry.records?.skipped_test === 1 && dry.keys === 2 && dry.anonymous_ok === true, 'הרצת ניסיון מחזירה דוח מלא', JSON.stringify(dry));
+  ok(c0.s === 0 && c0.c === 0 && c0.b === 0 && c0.f === 0, 'הרצת ניסיון לא כותבת דבר', JSON.stringify(c0));
+  const real = (await rows('authenticated', ADMIN, `select import_apply($1::jsonb, false) r`, [pj]))[0].r;
+  const c1 = await cnt();
+  ok(real.status === 'imported' && c1.s === 2 && c1.c === 1 && c1.f === 1, 'ייבוא בפועל נכתב', JSON.stringify(c1));
+  const again = (await rows('authenticated', ADMIN, `select import_apply($1::jsonb, false) r`, [pj]))[0].r;
+  ok(again.status === 'already_imported' && JSON.stringify(await cnt()) === JSON.stringify(c1), 'הרצה חוזרת לא יוצרת כפילויות');
+  const P2 = { ...P, batch: { id: 'test-import-2', source: 'בדיקה' }, cohorts: [], exams: [], questions: [], feedback_forms: [], feedback_questions: [], records: [], feedback_responses: [],
+    submissions: [{ ...P.submissions[0], id: u() }] };
+  ok(!!(await fails('authenticated', ADMIN, `select import_apply($1::jsonb, false)`, [JSON.stringify(P2)])) && JSON.stringify(await cnt()) === JSON.stringify(c1), 'אותה רשומת מקור באצווה אחרת: נדחה, בלי כתיבה חלקית');
+  const s1 = (await rows('authenticated', ADMIN, `select score_pct::float sc, passed, submitted_at, id_number, unit, receipt, review_flags from exam_submissions where id = $1`, [S1]))[0];
+  ok(s1.sc === 50 && s1.passed === null && new Date(s1.submitted_at).toISOString() === '2025-07-31T10:00:00.000Z' && s1.id_number === '000000018' && s1.unit === null,
+    'ציון, מועד ות״ז נשמרו כפי שנרשמו (כולל אפסים מובילים); אין קביעת מעבר', JSON.stringify(s1));
+  const vis = (await rows('anon', null, `select exam_result($1) r`, [s1.receipt]))[0].r;
+  ok(!vis.visible && vis.score_pct == null, 'תוצאה מיובאת אינה נחשפת בקוד אישור', JSON.stringify(vis));
+  ok((await rows('authenticated', ADMIN, `select count(*)::int c from certificates x join exam_submissions s on s.id = x.source_submission where s.import_batch is not null`))[0].c === 0, 'אין טופסי סיום אחרי ייבוא');
+  for (const t of ['import_batches', 'import_records', 'exam_submissions', 'feedback_responses', 'exam_keys'])
+    ok((await rows('anon', null, `select * from ${t}`)).length === 0, `הציבור לא רואה ${t}`);
+  ok((await rows('authenticated', OTHER, `select * from import_records`)).length === 0, 'משתמש שאינו מנהלת לא רואה יומן ייבוא');
+  const fr = (await rows('authenticated', ADMIN, `select full_name, submitted_at, submitted_on::text d from feedback_responses where source_id = 'f1'`))[0];
+  ok(fr.full_name === null && fr.submitted_at === null && fr.d === '2025-07-31', 'משוב מיובא נשאר אנונימי, תאריך בלבד');
+  ok(/exam_submissions_unit_required/.test(await fails('authenticated', ADMIN, `insert into exam_submissions (exam_id, cohort_id, full_name, unit, id_number, receipt, attempt_no, answers) values ($1, $2, 'x', null, '000000018', 'ZZZ', 1, '{}')`, [HE, HC])), 'יחידה ריקה מותרת רק ברשומה מיובאת');
+  ok(!!(await fails('authenticated', ADMIN, `update exams set mode = 'internal', is_open = true where id = $1`, [HE])), 'מבחן היסטורי לא נפתח בלי כללים מאושרים');
+  // ביטול: מסרב אם נוספו נתונים אחרים למחזור, ומוחק רק את האצווה
+  const R = (await rows('authenticated', ADMIN, `insert into schedule_items (cohort_id, day_date, topic) values ($1, '2025-07-31', 'פריט שלי') returning id`, [HC]))[0];
+  if (R.id) { ok(/cohort_has_other_data/.test(await fails('authenticated', ADMIN, `select import_undo('test-import-1')`)), 'ביטול נעצר כשיש במחזור נתונים שלא יובאו');
+    await as('authenticated', ADMIN, `delete from schedule_items where id = $1`, [R.id]); }
+  const before = (await rows('authenticated', ADMIN, `select (select count(*) from cohorts)::int c, (select count(*) from exam_submissions where import_batch is null)::int s, (select count(*) from feedback_responses where import_batch is null)::int f`))[0];
+  ok(!!(await fails('anon', null, `select import_undo('test-import-1')`)), 'ביטול: הציבור לא יכול');
+  const und = (await rows('authenticated', ADMIN, `select import_undo('test-import-1') r`))[0].r;
+  const after = (await rows('authenticated', ADMIN, `select (select count(*) from cohorts)::int c, (select count(*) from exam_submissions where import_batch is null)::int s, (select count(*) from feedback_responses where import_batch is null)::int f`))[0];
+  ok(und.submissions === 2 && und.cohorts === 1 && after.c === before.c - 1 && after.s === before.s && after.f === before.f && JSON.stringify(await cnt()) === JSON.stringify(c0), 'ביטול מוחק רק את האצווה', JSON.stringify([und, before, after]));
+}
 console.log(`\n${pass} עברו, ${fail} נכשלו`);
 process.exit(fail ? 1 : 0);

@@ -52,3 +52,7 @@ node_modules/
 *.MP4
 *.mp3
 *.m4a
+
+# Private import/export work area (personal data) - never commit
+_private_import/
+**/_private_import/
