@@ -141,8 +141,8 @@ body.has-demo .side{top:calc(var(--hdr-h) + var(--demo-h,0px));height:calc(100vh
 .hero h1{font-size:clamp(1.9rem,6.6vw,3.1rem);font-weight:800;letter-spacing:-.02em;line-height:1.15;animation:cIn .8s .16s var(--ease) both}
 .hero .sub{color:#CFE4F1;margin-top:10px;font-size:clamp(1rem,3vw,1.15rem);font-weight:400;max-width:56ch;animation:cIn .8s .24s var(--ease) both}
 .hero .pill{margin-top:18px;display:inline-flex;align-items:center;gap:10px;padding:7px 16px;border:1px solid rgba(255,255,255,.24);border-radius:99px;
-  font-size:.92rem;font-weight:600;background:rgba(255,255,255,.06);animation:cIn .8s .32s var(--ease) both}
-.hero .pill .dot{width:7px;height:7px;border-radius:50%;background:var(--amber)}
+  font-size:1rem;font-weight:800;background:var(--amber);color:#FFFFFF;border-color:var(--amber);box-shadow:0 4px 14px rgba(255,183,92,.28);animation:cIn .8s .32s var(--ease) both}
+.hero .pill .dot{width:7px;height:7px;border-radius:50%;background:#FFFFFF}
 @keyframes cIn{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:none}}
 
 .now-card{display:flex;gap:16px;align-items:center;padding:16px 18px;margin-bottom:22px;border-inline-start:4px solid var(--amber)}

@@ -100,7 +100,6 @@ function welcomeHTML() {
   const body = lines(w.body);
   return `<section class="welcome" aria-labelledby="welcome-h">
     <div class="eyebrow">דבר מדור ההדרכה</div>
-    ${w.quote ? `<figure class="welcome-quote"><blockquote>"${esc(w.quote)}"</blockquote>${w.source ? `<figcaption>${esc(w.source)}</figcaption>` : ''}</figure>` : ''}
     ${w.title ? `<h2 id="welcome-h">${esc(w.title)}</h2>` : '<h2 id="welcome-h" class="sr">דבר מדור ההדרכה</h2>'}
     <div class="welcome-text">${lines(w.intro).map(p => `<p>${esc(p)}</p>`).join('')}</div>
     ${body.length || w.signature ? `<div id="welcome-more" class="welcome-text" hidden>${body.map(p => `<p>${esc(p)}</p>`).join('')}
