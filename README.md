@@ -61,7 +61,16 @@
 ```
 cd tools
 npm install
-npm run test:db        # 87 בדיקות הרשאות ולוגיקה על Postgres מקומי
+npm run test:db        # 143 בדיקות הרשאות ולוגיקה על Postgres מקומי
 node serve.mjs         # האתר ב-http://localhost:5173
 # דוגמת טופס סיום: http://localhost:5173/__tools/cert-sample.html
 ```
+
+## פרסום ב-GitHub Pages (ממתין לאישור המנהלת)
+1. GitHub → המאגר → Settings → Pages → Source: **Deploy from a branch** → Branch: `main`, תיקייה: `/docs` → Save.
+2. הכתובת הקבועה: `https://fortestudio26.github.io/taatz-course/` (מסך הניהול: `…/taatz-course/admin.html`).
+3. Supabase → Authentication → URL Configuration → Site URL: הכתובת הקבועה.
+4. בדיקה אחרי פרסום: דף הבית, לו״ז, חומרים, מבחן ומשוב ("אינו פתוח כעת"), כניסת מנהלת.
+
+הפרסום אינו פותח את המבחן או את המשוב — כל אחד מהם נפתח בנפרד במסך הניהול, אחרי אישור הכללים.
+לא עולים למאגר: נתונים אישיים, תוצאות, מפתח תשובות, גיבויים (`_private_import/`), חתימה, טפסים אישיים או סודות.

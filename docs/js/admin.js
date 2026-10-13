@@ -515,7 +515,7 @@ VIEWS.exam = async () => {
     ${e.mode === 'external' ? `<p>קישור חיצוני: ${safeUrl(e.external_url) ? `<a class="ltr" href="${esc(e.external_url)}" target="_blank" rel="noopener">${esc(e.external_url)}</a>` : '<span class="req">לא הוגדר</span>'}</p>` : ''}
     </div>
     ${e.mode !== 'external' ? `<div class="sect-title">שאלות (${qs.length}) · סה״כ ${totalPts} נקודות</div>
-    <div class="btnrow" style="margin-bottom:12px"><button class="btn solid" id="add-q">${icon('plus')}שאלה חדשה</button><button class="btn ghost" id="preview-types">תצוגת סוגי השאלות</button></div>
+    <div class="btnrow" style="margin-bottom:12px"><button class="btn solid" id="add-q">${icon('plus')}שאלה חדשה</button><button class="btn ghost" id="preview-types">תצוגת סוגי השאלות</button>${qs.length ? '<button class="btn solid" id="exam-preview">תצוגה מקדימה של המבחן</button>' : ''}</div>
     ${qs.map((q, i) => { const k = keys.find(x => x.question_id === q.id); return `<div class="edit-row"><div class="grow"><div class="d">שאלה ${i + 1} · ${esc(QTYPES_EXAM[q.qtype])} · ${q.points} נק׳ ${q.import_batch ? '· <span class="tag gray">מיובא</span> ' : ''}${q.qtype !== 'open' && !k ? '<span class="req">· חסרה תשובה נכונה</span>' : ''}</div><div class="t">${esc(q.prompt)}</div></div>
       <div class="btnrow"><button class="btn ghost sm" data-edit-q="${q.id}" aria-label="עריכה">${icon('edit')}</button><button class="btn danger sm" data-del-q="${q.id}" aria-label="מחיקה">${icon('trash')}</button></div></div>`; }).join('')
       || '<div class="empty"><b>אין עדיין שאלות</b>השאלות יוזנו לאחר שתספקי אותן.</div>'}` : ''}</div>`;
@@ -560,6 +560,23 @@ BIND.exam = () => {
   });
   $('#release')?.addEventListener('click', async () => { const e = await getExam(); await run(() => store.update('exams', e.id, { results_released: !e.results_released }), 'עודכן'); render(); });
   $('#add-q')?.addEventListener('click', () => editExamQuestion(null));
+  // תצוגה מקדימה למנהלת: כך נראות השאלות למשתתף. מפתח התשובות מוסתר עד שמסמנים אותו (למנהלת בלבד).
+  $('#exam-preview')?.addEventListener('click', async () => {
+    const e = await getExam();
+    const qs = await store.list('exam_questions', { eq: { exam_id: e.id }, order: [['sort']] });
+    const keys = Object.fromEntries((await store.list('exam_keys', { inList: ['question_id', qs.map(q => q.id)] })).map(k => [k.question_id, k.correct]));
+    const isKey = (q, id) => { const k = keys[q.id]; return Array.isArray(k) ? k.includes(id) : k === id; };
+    const el = sheet(`<div class="tag amber" style="margin-bottom:8px;white-space:normal;line-height:1.4">תצוגה מקדימה למנהלת — לא נשמר דבר, והשליחה מושבתת</div>
+      <h3>${esc(e.title)}</h3>${e.instructions ? `<p class="sub" style="white-space:pre-line">${esc(e.instructions)}</p>` : ''}
+      <label class="choice" style="margin:8px 0 14px"><input type="checkbox" id="pv-keys"><span>הצגת התשובות הנכונות (למנהלת בלבד — לא נשלח למשתתפים)</span></label>
+      <div id="pv-exam" class="card pad" style="box-shadow:none">${qs.map((q, i) => `<fieldset class="q" style="border:0;margin:0;padding-inline:0">
+        <div class="qn">שאלה ${i + 1} · ${q.points} נק׳${q.qtype === 'multi' ? ' · ניתן לבחור כמה תשובות' : ''}</div><legend class="qp">${esc(q.prompt)}</legend>
+        ${(q.options || []).map(o => `<label class="choice${isKey(q, o.id) ? ' pv-key' : ''}"><input type="${q.qtype === 'multi' ? 'checkbox' : 'radio'}" name="pv_${q.id}"><span>${esc(o.text)}</span></label>`).join('')}
+        ${q.qtype === 'short' ? '<input class="input" disabled>' : q.qtype === 'open' ? '<textarea class="input" disabled></textarea>' : ''}</fieldset>`).join('')}
+        <div class="btnrow" style="margin-top:12px"><button class="btn solid" type="button" disabled>הגשת המבחן (מושבת בתצוגה מקדימה)</button></div></div>
+      <div class="btnrow" style="margin-top:12px"><button class="btn ghost" data-close>סגירת התצוגה</button></div>`, { wide: true });
+    $('#pv-keys', el).addEventListener('change', ev => $('#pv-exam', el).classList.toggle('show-keys', ev.target.checked));
+  });
   $('#preview-types')?.addEventListener('click', () => sheet(`<h3>סוגי השאלות</h3><p class="sub">כך נראית כל צורת שאלה למשתתף. הנוסח כאן לתצוגה בלבד.</p>
     ${Object.entries(QTYPES_EXAM).map(([k, t]) => `<div class="q"><div class="qn">${esc(t)}</div><div class="qp">נוסח השאלה יופיע כאן</div>${k === 'single' || k === 'multi' ? `<label class="choice"><input type="${k === 'single' ? 'radio' : 'checkbox'}" disabled><span>אפשרות</span></label><label class="choice"><input type="${k === 'single' ? 'radio' : 'checkbox'}" disabled><span>אפשרות</span></label>` : k === 'truefalse' ? '<label class="choice"><input type="radio" disabled><span>נכון</span></label><label class="choice"><input type="radio" disabled><span>לא נכון</span></label>' : k === 'short' ? '<input class="input" disabled>' : '<textarea class="input" disabled></textarea>'}</div>`).join('')}
     <button class="btn ghost" data-close>סגירה</button>`, { wide: true }));
@@ -694,7 +711,7 @@ BIND.feedback = () => {
     const f = await getForm(); const qs = await store.list('feedback_questions', { eq: { form_id: f.id }, order: [['sort']] });
     const { feedbackFormHTML } = await import('./fbform.js');
     const intro = String(f.intro || '').split('\n').map(l => l.trim()).filter(Boolean);
-    sheet(`<div class="tag amber" style="margin-bottom:8px">תצוגה מקדימה למנהלת — לא נשמר דבר</div>
+    sheet(`<div class="tag amber" style="margin-bottom:8px;white-space:normal;line-height:1.4">תצוגה מקדימה למנהלת — לא נשמר דבר</div>
       <h3>${esc(f.title)}</h3>${intro.length ? `<div class="callout ok" style="margin:10px 0 14px"><span class="mark"></span><div>${intro.map(p => `<p>${esc(p)}</p>`).join('')}</div></div>` : ''}
       ${feedbackFormHTML(f, qs, { preview: true })}<div class="btnrow" style="margin-top:12px"><button class="btn ghost" data-close>סגירת התצוגה</button></div>`, { wide: true });
   });

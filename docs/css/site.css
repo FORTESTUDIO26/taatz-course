@@ -393,3 +393,7 @@ fieldset.q{min-width:0}
 .rating.stars small{font-size:.7rem;line-height:1.2;color:var(--muted)}
 .q-err:empty{display:none}
 .q-err{margin-top:6px}
+
+/* תצוגה מקדימה של מבחן במסך הניהול: סימון התשובות הנכונות למנהלת */
+.show-keys .pv-key{background:#E7F6EC;border-color:#2E8B57}
+.show-keys .pv-key span::after{content:" ✓ תשובה נכונה";font-weight:800;color:#1F6B41;font-size:.85em}
