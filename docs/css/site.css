@@ -376,3 +376,20 @@ table.tbl{width:100%;border-collapse:collapse;font-size:.93rem}
 .sw[aria-checked="true"] .sw-knob{inset-inline-start:25px}
 .sw-label{font-size:.9rem;color:var(--muted);font-weight:600}
 .sw-label.ok{color:var(--ok)}.sw-label.amber{color:var(--amber-ink)}
+
+/* ============ טופס משוב בחלקים ============ */
+.fb-progress{margin-bottom:16px}
+.fb-progress-t{display:flex;justify-content:space-between;font-size:.86rem;font-weight:700;color:var(--muted);margin-bottom:6px}
+.fb-sec{font-size:1.2rem;color:var(--deep);margin:0 0 8px}
+.fb-intro{background:var(--tint);border:1px solid var(--line2);border-radius:var(--r-sm);padding:12px 14px;margin-bottom:6px}
+.fb-intro p{margin:0 0 2px;font-size:.95rem}
+.rating.stars{direction:ltr;justify-content:center;gap:4px;flex-wrap:nowrap}
+fieldset.q{min-width:0}
+.rating.stars label{flex:0 1 48px;min-width:0;border:0;background:none;padding:2px 0;display:flex;flex-direction:column;align-items:center;gap:0}
+.rating.stars label:has(input:checked){background:none;color:var(--navy)}
+.rating.stars .st{color:#CBD5E1;font-size:clamp(1.6rem,8vw,2.1rem);line-height:1;transition:color .12s}
+.rating.stars label:hover .st{color:#F6C46B}
+.rating.stars:has(input[value="1"]:checked) label:nth-child(-n+1) .st,.rating.stars:has(input[value="2"]:checked) label:nth-child(-n+2) .st,.rating.stars:has(input[value="3"]:checked) label:nth-child(-n+3) .st,.rating.stars:has(input[value="4"]:checked) label:nth-child(-n+4) .st,.rating.stars:has(input[value="5"]:checked) label:nth-child(-n+5) .st{color:var(--amber)}
+.rating.stars small{font-size:.7rem;line-height:1.2;color:var(--muted)}
+.q-err:empty{display:none}
+.q-err{margin-top:6px}

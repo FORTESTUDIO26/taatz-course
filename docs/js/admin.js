@@ -622,24 +622,34 @@ VIEWS.feedback = async () => {
   if (!f) return top + `<div class="empty"><b>לא הוגדר משוב למחזור הזה</b><div class="btnrow" style="justify-content:center;margin-top:12px">
     <button class="btn solid" id="create-fb">${icon('plus')}יצירת משוב</button><button class="btn ghost" id="copy-fb">${icon('copy')}העתקה ממחזור אחר</button></div></div></div>`;
   const qs = await store.list('feedback_questions', { eq: { form_id: f.id }, order: [['sort']] });
+  const { groupSections } = await import('./fbform.js');
+  const secs = groupSections(f, qs);
+  let num = 0;
+  const list = secs.map(s => `<div class="sect-title">${esc(s.title || 'ללא חלק')}</div>
+    ${s.intro ? `<div class="small muted" style="white-space:pre-line;margin:-4px 0 10px">${esc(s.intro)}</div>` : ''}
+    ${s.questions.map(q => `<div class="edit-row"><div class="grow"><div class="d">${++num} · ${esc(QTYPES_FB[q.qtype])}${q.required ? ' · <b>חובה</b>' : ' · רשות'}${q.placeholder ? ' · רמז: ' + esc(q.placeholder) : ''}</div><div class="t">${esc(q.prompt)}</div>
+      ${(q.options || []).length ? `<div class="d">${q.options.map(o => (q.qtype === 'rating5' ? o.id + ' = ' : '') + esc(o.text)).join(' · ')}</div>` : ''}</div>
+      <div class="btnrow"><button class="btn ghost sm" data-edit-fq="${q.id}" aria-label="עריכה">${icon('edit')}</button><button class="btn danger sm" data-del-fq="${q.id}" aria-label="מחיקה">${icon('trash')}</button></div></div>`).join('')}`).join('');
   return top + `<div class="card pad stack"><div class="btnrow" style="justify-content:space-between"><div><div style="font-weight:800;color:var(--deep);font-size:1.15rem">${esc(f.title)}</div>
-    <div class="small muted">מצב: <b>${MODE[f.mode]}</b> · ${f.anonymous ? '<span class="tag ok">אנונימי</span>' : '<span class="tag amber">מזוהה</span>'} · ${f.is_open ? '<span class="tag ok">פתוח</span>' : '<span class="tag gray">סגור</span>'}</div></div>
-    <div class="btnrow"><button class="btn ghost sm" id="fb-settings">${icon('settings')}הגדרות</button></div></div>
+    <div class="small muted">אופן: <b>${MODE[f.mode]}</b> · ${f.anonymous ? '<span class="tag ok">אנונימי</span>' : '<span class="tag amber">מזוהה</span>'}</div></div>
+    <div class="btnrow"><button class="btn solid sm" id="fb-preview-btn" ${qs.length ? '' : 'disabled'}>תצוגה מקדימה</button><button class="btn ghost sm" id="fb-settings">${icon('settings')}הגדרות</button><button class="btn ghost sm" id="fb-sections">חלקים והנחיות</button></div></div>
     <div class="sw-box" style="border-top:0;padding-top:0">${switchHTML('data-fb-sw', selCohort, feedbackStateOf(f), 'משוב')}</div>
+    ${f.intro ? `<div class="small" style="white-space:pre-line">${esc(f.intro)}</div>` : ''}
     ${f.mode === 'external' ? `<p>קישור חיצוני: ${safeUrl(f.external_url) ? `<a class="ltr" href="${esc(f.external_url)}" target="_blank" rel="noopener">${esc(f.external_url)}</a>` : '<span class="req">לא הוגדר</span>'}</p>` : ''}</div>
-    ${f.mode !== 'external' ? `<div class="sect-title">שאלות (${qs.length})</div><div class="btnrow" style="margin-bottom:12px"><button class="btn solid" id="add-fq">${icon('plus')}שאלה חדשה</button></div>
-    ${qs.map((q, i) => `<div class="edit-row"><div class="grow"><div class="d">${i + 1} · ${esc(QTYPES_FB[q.qtype])}${q.section ? ' · ' + esc(q.section) : ''}${q.required ? ' · חובה' : ''}</div><div class="t">${esc(q.prompt)}</div></div>
-      <div class="btnrow"><button class="btn ghost sm" data-edit-fq="${q.id}" aria-label="עריכה">${icon('edit')}</button><button class="btn danger sm" data-del-fq="${q.id}" aria-label="מחיקה">${icon('trash')}</button></div></div>`).join('')
-      || '<div class="empty"><b>אין עדיין שאלות</b>השאלות יוזנו לאחר שתספקי אותן.</div>'}` : ''}</div>`;
+    ${f.mode !== 'external' ? `<div class="btnrow" style="justify-content:space-between;margin:22px 0 4px"><div class="sect-title" style="margin:0">שאלות (${qs.length})</div><button class="btn solid sm" id="add-fq">${icon('plus')}שאלה חדשה</button></div>
+    ${list || '<div class="empty"><b>אין עדיין שאלות</b>השאלות יוזנו לאחר שתספקי אותן.</div>'}` : ''}</div>`;
 };
 const fbFields = [
-  { k: 'title', l: 'כותרת', req: true }, { k: 'intro', l: 'פתיח למשתתפים', type: 'textarea', rows: 3 },
+  { k: 'title', l: 'כותרת', req: true }, { k: 'intro', l: 'פתיח למשתתפים (כל שורה = פסקה)', type: 'textarea', rows: 3 },
   { k: 'mode', l: 'אופן המשוב', type: 'select', opts: MODE }, { k: 'external_url', l: 'קישור לטופס החיצוני', type: 'url' },
   { k: 'anonymous', l: 'משוב אנונימי', type: 'checkbox', hint: 'כשמסומן: לא נשמרים שם, מזהה משתמש או שעת מילוי עם התשובות. השינוי חל על תשובות חדשות בלבד.' },
 ];
-const fqFields = [
-  { k: 'qtype', l: 'סוג השאלה', type: 'select', opts: QTYPES_FB }, { k: 'section', l: 'נושא / קבוצה (לא חובה)', hint: 'לדוגמה: שם השיעור' },
-  { k: 'prompt', l: 'נוסח השאלה', type: 'textarea', rows: 2, req: true }, { k: 'options', l: 'אפשרויות (כל אפשרות בשורה) — לבחירה יחידה/מרובה', type: 'textarea', rows: 4 },
+const fqFields = sections => [
+  { k: 'qtype', l: 'סוג השאלה', type: 'select', opts: QTYPES_FB },
+  { k: 'section', l: 'חלק', hint: sections.length ? 'חלקים קיימים: ' + sections.join(' · ') : 'לדוגמה: חלק א\' - התרשמות כללית' },
+  { k: 'prompt', l: 'נוסח השאלה', type: 'textarea', rows: 2, req: true },
+  { k: 'options', l: 'אפשרויות (כל אפשרות בשורה)', type: 'textarea', rows: 5 },
+  { k: 'placeholder', l: 'טקסט רמז בתיבת התשובה (לא חובה)' },
   { k: 'required', l: 'שאלת חובה', type: 'checkbox' }, { k: 'sort', l: 'מיקום (מספר)', type: 'number' },
 ];
 BIND.feedback = () => {
@@ -650,18 +660,59 @@ BIND.feedback = () => {
     const v = await formSheet('הגדרות המשוב', fbFields, f, { onChange: (el, x) => { $('[data-fk="external_url"]', el).hidden = x.mode !== 'external'; } });
     if (!v) return; await run(() => store.update('feedback_forms', f.id, v), 'נשמר'); render();
   });
+  $('#fb-sections')?.addEventListener('click', async () => {
+    const f = await getForm(); const qs = await store.list('feedback_questions', { eq: { form_id: f.id } });
+    const { groupSections } = await import('./fbform.js');
+    const secs = groupSections(f, qs).map(s => ({ title: s.title, intro: s.intro }));
+    (f.sections || []).forEach(s => { if (!secs.find(x => x.title === s.title)) secs.push(s); });
+    secs.push({ title: '', intro: '' });
+    const fields = secs.flatMap((s, i) => [{ k: `t${i}`, l: `חלק ${i + 1} — כותרת`, hint: i === secs.length - 1 ? 'שורה ריקה להוספת חלק חדש' : 'שינוי הכותרת מעדכן גם את השאלות של החלק' }, { k: `n${i}`, l: `חלק ${i + 1} — הנחיה (כל שורה בנפרד)`, type: 'textarea', rows: 4 }]);
+    const v = await formSheet('חלקים והנחיות', fields, Object.fromEntries(secs.flatMap((s, i) => [[`t${i}`, s.title], [`n${i}`, s.intro]])), { wide: true, sub: 'הסדר כאן הוא סדר החלקים בטופס.' });
+    if (!v) return;
+    const next = secs.map((s, i) => ({ old: s.title, title: (v[`t${i}`] || '').trim(), intro: (v[`n${i}`] || '').trim() })).filter(s => s.title);
+    await run(async () => {
+      for (const s of next) if (s.old && s.old !== s.title) for (const q of qs.filter(x => (x.section || '') === s.old)) await store.update('feedback_questions', q.id, { section: s.title });
+      await store.update('feedback_forms', f.id, { sections: next.map(({ title, intro }) => ({ title, intro })) });
+    }, 'נשמר');
+    render();
+  });
+  $('#fb-preview-btn')?.addEventListener('click', async () => {
+    const f = await getForm(); const qs = await store.list('feedback_questions', { eq: { form_id: f.id }, order: [['sort']] });
+    const { feedbackFormHTML } = await import('./fbform.js');
+    const intro = String(f.intro || '').split('\n').map(l => l.trim()).filter(Boolean);
+    sheet(`<div class="tag amber" style="margin-bottom:8px">תצוגה מקדימה למנהלת — לא נשמר דבר</div>
+      <h3>${esc(f.title)}</h3>${intro.length ? `<div class="callout ok" style="margin:10px 0 14px"><span class="mark"></span><div>${intro.map(p => `<p>${esc(p)}</p>`).join('')}</div></div>` : ''}
+      ${feedbackFormHTML(f, qs, { preview: true })}<div class="btnrow" style="margin-top:12px"><button class="btn ghost" data-close>סגירת התצוגה</button></div>`, { wide: true });
+  });
   $('#add-fq')?.addEventListener('click', () => editFbQuestion(null));
 };
+// ניווט בחלקי התצוגה המקדימה
+document.addEventListener('click', async e => { if (e.target.closest('#fb-preview')) { const m = await import('./fbform.js'); m.handleStepClick(e); } });
 async function editFbQuestion(id) {
   const f = await getForm();
   const qs = await store.list('feedback_questions', { eq: { form_id: f.id }, order: [['sort']] });
   const q = qs.find(x => x.id === id);
-  const v = await formSheet(id ? 'עריכת שאלה' : 'שאלה חדשה', fqFields, q ? { ...q, options: (q.options || []).map(o => o.text).join('\n') } : { qtype: 'rating5', sort: qs.length },
-    { onChange: (el, x) => { $('[data-fk="options"]', el).hidden = !['single', 'multi'].includes(x.qtype); } });
+  const sections = [...new Set([...(f.sections || []).map(s => s.title), ...qs.map(x => x.section).filter(Boolean)])];
+  const last = qs[qs.length - 1];
+  const v = await formSheet(id ? 'עריכת שאלה' : 'שאלה חדשה', fqFields(sections),
+    q ? { ...q, options: (q.options || []).map(o => o.text).join('\n') } : { qtype: 'rating5', sort: qs.length ? Math.max(...qs.map(x => x.sort)) + 1 : 0, section: last?.section || '', options: last?.qtype === 'rating5' ? last.options.map(o => o.text).join('\n') : '' },
+    { onChange: (el, x) => {
+      const o = $('[data-fk="options"]', el), p = $('[data-fk="placeholder"]', el);
+      o.hidden = !['single', 'multi', 'rating5'].includes(x.qtype); p.hidden = !['text', 'longtext'].includes(x.qtype);
+      $('label', o).textContent = x.qtype === 'rating5' ? 'תיאור כל דרגה, מ-1 עד 5 (שורה לכל דרגה, לא חובה)' : 'אפשרויות (כל אפשרות בשורה)';
+    } });
   if (!v) return;
-  const options = ['single', 'multi'].includes(v.qtype) ? (v.options || '').split('\n').map(s => s.trim()).filter(Boolean).map((text, i) => ({ id: String.fromCharCode(97 + i), text })) : [];
-  if (['single', 'multi'].includes(v.qtype) && options.length < 2) return toast('יש להזין לפחות 2 אפשרויות', true);
-  const row = { form_id: f.id, qtype: v.qtype, section: v.section, prompt: v.prompt, options, required: !!v.required, sort: v.sort ?? qs.length };
+  const lines = (v.options || '').split('\n').map(s => s.trim()).filter(Boolean);
+  let options = [];
+  if (['single', 'multi'].includes(v.qtype)) {
+    options = lines.map((text, i) => ({ id: String.fromCharCode(97 + i), text }));
+    if (options.length < 2) return toast('יש להזין לפחות 2 אפשרויות', true);
+  } else if (v.qtype === 'rating5') {
+    if (lines.length && lines.length !== 5) return toast('לסולם הדירוג יש להזין בדיוק 5 תיאורים (או להשאיר ריק)', true);
+    options = lines.map((text, i) => ({ id: String(i + 1), text }));
+  }
+  const row = { form_id: f.id, qtype: v.qtype, section: v.section, prompt: v.prompt, options, required: !!v.required, sort: v.sort ?? qs.length,
+    placeholder: ['text', 'longtext'].includes(v.qtype) ? v.placeholder : null };
   await run(() => id ? store.update('feedback_questions', id, row) : store.insert('feedback_questions', row), 'נשמר'); render();
 }
 

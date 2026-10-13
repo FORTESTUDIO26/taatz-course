@@ -392,17 +392,19 @@ async function viewFeedback() {
   if (sentHere(f.id) && !location.hash.includes('again')) return `<div class="wrap">${head('feedback', c.name, f.title)}<div class="callout ok"><span class="mark"></span><div>
     <h4>המשוב נשלח מהמכשיר הזה. תודה!</h4><p class="small"><a href="#/feedback?again">מילוי משוב נוסף ממכשיר משותף</a></p></div></div></div>`;
   const qs = await store.list('feedback_questions', { eq: { form_id: f.id }, order: [['sort']] });
+  const { feedbackFormHTML } = await import('./fbform.js');
+  const intro = String(f.intro || '').split('\n').map(l => l.trim()).filter(Boolean);
+  const anonNote = f.anonymous && !/אנונימי/.test(f.intro || '') ? '<p class="small"><b>המשוב אנונימי:</b> לא נשמרים שם או פרטים מזהים עם התשובות.</p>' : '';
   return `<div class="wrap">${head('feedback', c.name, f.title)}
-    <div class="callout${f.anonymous ? ' ok' : ''}" style="margin-bottom:16px"><span class="mark"></span><div>${f.intro ? `<p>${esc(f.intro)}</p>` : ''}
-      <p class="small"><b>${f.anonymous ? 'המשוב אנונימי:' : 'המשוב אינו אנונימי:'}</b> ${f.anonymous ? 'לא נשמרים שם או פרטים מזהים עם התשובות.' : 'אפשר לציין שם, והוא יישמר עם התשובות.'}</p></div></div>
-    <form id="fb-form" class="card pad" data-form="${esc(f.id)}" novalidate>
-      ${f.anonymous ? '' : `<div class="field"><label for="fb-name">שם (לא חובה)</label><input class="input" id="fb-name" autocomplete="name" maxlength="80"></div>`}
-      ${qs.map((q, i) => questionHTML(q, i, 'fb')).join('') || '<p class="muted">טרם הוגדרו שאלות.</p>'}
-      <div class="err" id="fb-err" role="alert"></div><div class="btnrow" style="margin-top:14px"><button class="btn solid" type="submit" ${qs.length ? '' : 'disabled'}>שליחת המשוב</button></div></form></div>`;
+    ${intro.length || anonNote ? `<div class="callout${f.anonymous ? ' ok' : ''}" style="margin-bottom:16px"><span class="mark"></span><div>${intro.map(p => `<p>${esc(p)}</p>`).join('')}${anonNote}</div></div>` : ''}
+    ${f.anonymous ? '' : `<div class="field"><label for="fb-name">שם (לא חובה)</label><input class="input" id="fb-name" autocomplete="name" maxlength="80" form="fb-form"></div>`}
+    ${feedbackFormHTML(f, qs)}</div>`;
 }
 async function submitFeedback(form) {
-  const { out, missing } = collect(form);
-  if (missing.length) { $('#fb-err').textContent = 'יש לענות על שאלות החובה המסומנות בכוכבית.'; missing[0].scrollIntoView({ behavior: 'smooth', block: 'center' }); return; }
+  const { validateStep, showStep } = await import('./fbform.js');
+  const steps = $$('.fb-step', form);
+  for (const [k, s] of steps.entries()) if (!validateStep(s)) { showStep(form, k); $('#fb-err').textContent = 'יש לענות על שאלות החובה המסומנות בכוכבית.'; return; }
+  const { out } = collect(form);
   const btn = $('button[type=submit]', form); btn.disabled = true;
   try {
     await store.rpc('submit_feedback', { p_form: form.dataset.form, p_name: $('#fb-name')?.value || null, p_answers: out });
@@ -414,6 +416,10 @@ async function submitFeedback(form) {
     $('#fb-err').textContent = errText(e); btn.disabled = false;
   }
 }
+
+// ניווט בין חלקי המשוב
+let fbMod = null; import('./fbform.js').then(m => { fbMod = m; });
+const fbStep = e => !!fbMod?.handleStepClick(e);
 
 /* ---------------- router ---------------- */
 const currentRoute = () => decodeURIComponent(location.hash.replace(/^#\/?/, '').split('?')[0]);
@@ -434,6 +440,7 @@ function openNav() { $('#side').classList.add('open'); $('#scrim').classList.add
 function closeNav() { $('#side').classList.remove('open'); $('#scrim').classList.remove('on'); $('#burger')?.setAttribute('aria-expanded', 'false'); }
 
 document.addEventListener('click', e => {
+  if (e.target.closest('#fb-form') && fbStep(e)) return;
   // לחיצה על קישור לעמוד הנוכחי טוענת אותו מחדש (למשל אחרי הגשת מבחן)
   const a = e.target.closest('a[href^="#/"]');
   if (a && a.getAttribute('href') === location.hash) { e.preventDefault(); render(); scrollTo({ top: 0 }); return; }

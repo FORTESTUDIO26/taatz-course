@@ -285,6 +285,18 @@ await as('anon', null, `select submit_feedback($1, null, '{"x":1}'::jsonb)`, [F2
 await as('authenticated', ADMIN, `update feedback_forms set is_open = false where id = $1`, [F2]);
 ok(/feedback_closed/.test(await fails('anon', null, `select submit_feedback($1, null, '{"x":2}'::jsonb)`, [F2])) &&
    (await rows('authenticated', ADMIN, `select count(*)::int c from feedback_responses where form_id = $1`, [F2]))[0].c === 1, 'סגירת משוב חוסמת שליחה ולא מוחקת תשובות');
+// משוב בחלקים: שאלות חובה נבדקות בשרת, חלקים וטקסט רמז נשמרים
+await as('authenticated', ADMIN, `update feedback_forms set sections = '[{"title":"חלק א","intro":"הנחיה"}]'::jsonb where id = $1`, [F2]);
+const RQ = (await rows('authenticated', ADMIN, `insert into feedback_questions (form_id, qtype, prompt, required, section, placeholder, options) values ($1, 'multi', 'נושאים', true, 'חלק א', null, '[{"id":"a","text":"א"},{"id":"b","text":"ב"}]') returning id`, [F2]))[0].id;
+const TQ = (await rows('authenticated', ADMIN, `insert into feedback_questions (form_id, qtype, prompt, required, placeholder) values ($1, 'longtext', 'פירוט', true, 'רמז...') returning id`, [F2]))[0].id;
+await as('authenticated', ADMIN, `update feedback_forms set is_open = true where id = $1`, [F2]);
+const fq = await rows('anon', null, `select placeholder from feedback_questions where id = $1`, [TQ]);
+const ff = await rows('anon', null, `select sections from feedback_forms where id = $1`, [F2]);
+ok(fq[0]?.placeholder === 'רמז...' && ff[0]?.sections?.[0]?.intro === 'הנחיה', 'משוב פתוח: חלקים וטקסט רמז גלויים לציבור');
+ok(/missing_required/.test(await fails('anon', null, `select submit_feedback($1, null, $2::jsonb)`, [F2, JSON.stringify({ [RQ]: [], [TQ]: 'תשובה' })])), 'בחירה מרובה חובה ריקה: נדחה');
+ok(/missing_required/.test(await fails('anon', null, `select submit_feedback($1, null, $2::jsonb)`, [F2, JSON.stringify({ [RQ]: ['a'], [TQ]: '   ' })])), 'טקסט חובה ריק: נדחה');
+await as('anon', null, `select submit_feedback($1, null, $2::jsonb)`, [F2, JSON.stringify({ [RQ]: ['a', 'b'], [TQ]: 'תשובה' })]);
+ok((await rows('authenticated', ADMIN, `select count(*)::int c from feedback_responses where form_id = $1`, [F2]))[0].c === 2, 'משוב מלא עם שאלות חובה: נשמר');
 ok((await rows('authenticated', ADMIN, `select show_welcome from cohorts where id = $1`, [C8]))[0].show_welcome === true, 'ברירת מחדל: "דבר מדור ההדרכה" מוצג במחזור חדש');
 console.log(`\n${pass} עברו, ${fail} נכשלו`);
 process.exit(fail ? 1 : 0);
