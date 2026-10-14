@@ -209,7 +209,8 @@ async function viewExam() {
   if (tok) {
     try {
       const d = await store.rpc('get_exam_draft', { p_token: tok });
-      if (d.status === 'started' && d.can_submit) return examQuestionsHTML(exam, c, tok, d.questions, d.answers || {}, d.grace_until, withReceipt);
+      if (d.status === 'started' && d.can_submit && d.time_over) return lateSubmit(exam, c, tok);
+      if (d.status === 'started' && d.can_submit) return examQuestionsHTML(exam, c, tok, d.questions, d.answers || {}, d.grace_until, withReceipt, d.deadline, d.server_now);
       setTok(exam.id, null);
       if (d.status === 'closed_unsubmitted' || !d.can_submit) return `<div class="wrap">${head('exam', c.name, exam.title)}
         <div class="callout warn"><span class="mark"></span><div><h4>${EXAM_CLOSED}</h4><p>המבחן נסגר לפני שהניסיון הוגש. התשובות שנשמרו עד הסגירה שמורות אצל צוות הקורס.</p></div></div>${withReceipt}</div>`;
@@ -226,16 +227,20 @@ async function viewExam() {
         <div class="field"><label for="ex-id">מספר תעודת זהות <span class="req">*</span></label><input class="input ltr" id="ex-id" required inputmode="numeric" maxlength="10" autocomplete="off" spellcheck="false">
           <span class="hint">9 ספרות, כולל ספרת ביקורת.</span></div>
       </div>
+      ${exam.time_limit_minutes ? `<div class="callout warn" style="margin:4px 0 10px"><span class="mark"></span><div><p><b>משך המבחן: ${exam.time_limit_minutes} דקות</b> מרגע לחיצה על ״התחלת המבחן״. שעון בראש המבחן מראה את הזמן שנותר. בתום הזמן המבחן יוגש אוטומטית עם התשובות שסומנו.</p></div></div>` : ''}
       <p class="small muted">אחרי ההתחלה התשובות נשמרות אוטומטית במהלך המבחן.</p>
       <div class="err" id="exam-err" role="alert"></div><div class="btnrow"><button class="btn solid" type="submit">התחלת המבחן</button></div></form>${withReceipt}</div>`;
 }
 
-function examQuestionsHTML(exam, c, token, qs, answers, graceUntil, withReceipt) {
+function examQuestionsHTML(exam, c, token, qs, answers, graceUntil, withReceipt, deadline, serverNow) {
   examRun = { examId: exam.id, token, timer: null, closed: false };
+  if (deadline) startClock(deadline, serverNow);
   const grace = graceUntil && !exam.is_open ? `<div class="callout warn" id="grace-note" style="margin-bottom:16px"><span class="mark"></span><div><h4>המבחן נסגר להתחלות חדשות</h4>
     <p>אפשר לסיים ולהגיש עד <b class="ltr">${esc(new Date(graceUntil).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' }))}</b>.</p></div></div>` : '';
   setTimeout(() => restoreAnswers(answers), 0);
-  return `<div class="wrap">${head('exam', c.name, exam.title)}${grace}<div id="exam-closed-note"></div>
+  const clock = deadline ? `<div class="exam-clock" id="exam-clock" role="timer" aria-live="off"><span>הזמן שנותר</span><b id="exam-clock-v" class="ltr">--:--</b></div>
+    <div class="sr" id="exam-clock-sr" aria-live="assertive"></div>` : '';
+  return `<div class="wrap">${head('exam', c.name, exam.title)}${clock}${grace}<div id="exam-closed-note"></div>
     <form id="exam-form" class="card pad" data-exam="${esc(exam.id)}" novalidate autocomplete="off">
       ${(qs || []).sort((a, b) => a.sort - b.sort).map((q, i) => questionHTML(q, i, 'exam')).join('')}
       <div class="small muted" id="autosave" role="status" aria-live="polite"></div>
@@ -248,6 +253,33 @@ function restoreAnswers(answers) {
     const vals = Array.isArray(v) ? v.map(String) : [String(v)];
     $$('input[type=radio],input[type=checkbox]', fs).forEach(i => { i.checked = vals.includes(i.value); });
     const t = fs.querySelector('input.input,textarea'); if (t) t.value = String(v);
+  }
+}
+// שעון מגבלת הזמן: מחושב לפי שעון השרת (לא לפי שעון המכשיר). בתום הזמן — הגשה אוטומטית.
+function startClock(deadline, serverNow) {
+  const run = examRun, end = new Date(deadline).getTime(), skew = serverNow ? new Date(serverNow).getTime() - Date.now() : 0;
+  let warned5 = false, warned1 = false;
+  const tick = () => {
+    if (examRun !== run || run.closed) return clearInterval(run.clock);
+    const left = Math.max(0, Math.round((end - (Date.now() + skew)) / 1000));
+    const v = document.getElementById('exam-clock-v'), box = document.getElementById('exam-clock'), sr = document.getElementById('exam-clock-sr');
+    if (v) v.textContent = `${String(Math.floor(left / 60)).padStart(2, '0')}:${String(left % 60).padStart(2, '0')}`;
+    if (box) box.classList.toggle('warn', left <= 300); if (box) box.classList.toggle('last', left <= 60);
+    if (!warned5 && left <= 300 && left > 60) { warned5 = true; if (sr) sr.textContent = 'נותרו 5 דקות'; toast('נותרו 5 דקות לסיום המבחן'); }
+    if (!warned1 && left <= 60 && left > 0) { warned1 = true; if (sr) sr.textContent = 'נותרה דקה אחת'; toast('נותרה דקה אחת. בתום הזמן המבחן יוגש אוטומטית.'); }
+    if (left <= 0) { clearInterval(run.clock); const f = $('#exam-form'); if (f) submitExam(f, { auto: true }); }
+  };
+  run.clock = setInterval(tick, 1000); setTimeout(tick, 0);
+}
+// חזרה לדף אחרי שהזמן נגמר: מגישים את מה שנשמר עד תום הזמן
+async function lateSubmit(exam, c, tok) {
+  try {
+    const r = await store.rpc('submit_exam', { p_token: tok, p_answers: {} });
+    setTok(exam.id, null);
+    return submittedHTML(r, 'הזמן להגשת המבחן הסתיים. המבחן הוגש אוטומטית עם התשובות שנשמרו עד תום הזמן.');
+  } catch (e) {
+    setTok(exam.id, null);
+    return `<div class="wrap">${head('exam', c.name, exam.title)}<div class="callout warn"><span class="mark"></span><div><h4>הזמן להגשת המבחן הסתיים</h4><p>${esc(errText(e))}</p></div></div></div>`;
   }
 }
 async function startExam(form) {
@@ -286,7 +318,8 @@ async function saveDraft() {
     const r = await store.rpc('save_exam_draft', { p_token: examRun.token, p_answers: collect(form).out });
     if (st) st.textContent = `התשובות נשמרו אוטומטית · ${new Date(r.saved_at).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })}`;
   } catch (e) {
-    if (/exam_closed|bad_token/.test(e.message)) examClosedNow();
+    if (/time_over/.test(e.message)) { const f = $('#exam-form'); if (f) submitExam(f, { auto: true }); }
+    else if (/exam_closed|bad_token/.test(e.message)) examClosedNow();
     else if (st) st.textContent = 'השמירה האוטומטית נכשלה (בעיית חיבור). התשובות עדיין בדף — נסו שוב בעוד רגע.';
   }
 }
@@ -318,29 +351,37 @@ function collect(form) {
   return { out, missing };
 }
 
-async function submitExam(form) {
-  if (!examRun) return;
+async function submitExam(form, { auto = false } = {}) {
+  if (!examRun || examRun.submitting) return;
   const err = $('#exam-err'); err.textContent = '';
   const { out } = collect(form);
   const total = $$('[data-q]', form).length, answered = Object.keys(out).length;
-  if (!(await confirmBox(answered < total ? `ענית על ${answered} מתוך ${total} שאלות. להגיש בכל זאת?` : 'להגיש את המבחן? לא ניתן לשנות תשובות אחרי ההגשה.', 'הגשה'))) return;
+  if (!auto && !(await confirmBox(answered < total ? `ענית על ${answered} מתוך ${total} שאלות. להגיש בכל זאת?` : 'להגיש את המבחן? לא ניתן לשנות תשובות אחרי ההגשה.', 'הגשה'))) return;
   const btn = $('button[type=submit]', form); btn.disabled = true;
-  clearTimeout(examRun.timer);
+  examRun.submitting = true;
+  clearTimeout(examRun.timer); clearInterval(examRun.clock);
+  if (auto) $$('#exam-form input, #exam-form textarea').forEach(x => { x.disabled = true; });
   try {
     const r = await store.rpc('submit_exam', { p_token: examRun.token, p_answers: out });
     setTok(examRun.examId, null); examRun = null;
+    $('#view').innerHTML = submittedHTML(r, auto || r.late ? (r.late ? 'הזמן להגשת המבחן הסתיים. המבחן הוגש עם התשובות שנשמרו עד תום הזמן.' : 'הזמן הסתיים, והמבחן הוגש אוטומטית עם התשובות שסומנו.') : '');
+    scrollTo({ top: 0 });
+  } catch (e) {
+    if (examRun) examRun.submitting = false;
+    if (/exam_closed|bad_token/.test(e.message)) return examClosedNow('ההגשה לא נקלטה כי המבחן נסגר על ידי צוות הקורס. התשובות שנשמרו עד הסגירה שמורות אצל צוות הקורס.');
+    err.textContent = errText(e); btn.disabled = false;
+  }
+}
+function submittedHTML(r, note = '') {
+  {
     const scoreTxt = r.score_pct != null ? `<div class="stat"><div><div class="k">ציון</div><div class="v num">${r.score_pct}</div></div>
       <div><div class="k">תוצאה</div><div class="v">${r.passed ? 'עבר/ה' : 'לא עבר/ה'}</div></div></div>`
       : `<p>${r.show_results === 'never' ? 'התוצאות יימסרו על ידי צוות הקורס.' : r.show_results === 'after_close' ? 'התוצאה תפורסם בהמשך.' : r.pending_manual ? 'חלק מהשאלות ייבדקו ידנית, והתוצאה תפורסם בהמשך.' : 'התוצאה תימסר על ידי צוות הקורס.'}</p>`;
-    $('#view').innerHTML = `<div class="wrap">${head('exam', '', 'המבחן הוגש')}<div class="card pad stack"><div class="callout ok"><span class="mark"></span><div><h4>ההגשה נקלטה. תודה!</h4></div></div>
+    return `<div class="wrap">${head('exam', '', 'המבחן הוגש')}<div class="card pad stack"><div class="callout ok"><span class="mark"></span><div><h4>ההגשה נקלטה. תודה!</h4>${note ? `<p>${esc(note)}</p>` : ''}</div></div>
       <div class="stat"><div><div class="k">קוד האישור האישי שלך</div><div class="v ltr" style="letter-spacing:.1em">${esc(r.receipt)}</div></div></div>
       <p class="small">כדאי לשמור את הקוד (צילום מסך או העתקה). הוא משמש לצפייה בתוצאה ובטופס הסיום האישי, ואינו נשמר במכשיר.</p>
       <div class="btnrow"><button class="btn ghost sm" data-copy="${esc(r.receipt)}">${icon('copy')}העתקת הקוד</button></div>
       ${scoreTxt}<a class="btn ghost" href="#/">חזרה לדף הבית</a></div></div>`;
-    scrollTo({ top: 0 });
-  } catch (e) {
-    if (/exam_closed|bad_token/.test(e.message)) return examClosedNow('ההגשה לא נקלטה כי המבחן נסגר על ידי צוות הקורס. התשובות שנשמרו עד הסגירה שמורות אצל צוות הקורס.');
-    err.textContent = errText(e); btn.disabled = false;
   }
 }
 async function checkReceipt() {

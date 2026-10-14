@@ -404,3 +404,10 @@ fieldset.q{min-width:0}
 .install-row svg{width:18px;height:18px}
 .install-steps{margin:8px 0 0;padding-inline-start:22px;line-height:1.7}
 .install-steps li{margin-bottom:4px}
+
+/* exam time limit: countdown under the header, visible while scrolling */
+.exam-clock{position:sticky;top:calc(var(--hdr-h) + 8px);z-index:20;display:flex;align-items:center;justify-content:space-between;gap:12px;
+  margin:0 0 14px;padding:10px 16px;border-radius:12px;background:var(--deep);color:#fff;font-weight:700;box-shadow:0 8px 20px -12px rgba(0,54,82,.6)}
+.exam-clock b{font-size:1.35rem;letter-spacing:.06em;font-variant-numeric:tabular-nums}
+.exam-clock.warn{background:#8A4B00}
+.exam-clock.last{background:#9B1C31}

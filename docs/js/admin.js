@@ -527,7 +527,7 @@ VIEWS.exam = async () => {
     <div class="sw-box" style="border-top:0;padding-top:0">${switchHTML('data-exam-sw', selCohort, examStateOf(e), 'מבחן')}</div>
     ${historyBox(e)}
     ${e.mode === 'internal' ? `<div class="stat"><div><div class="k">ציון עובר</div><div class="v">${e.pass_score ?? '—'}</div></div><div><div class="k">מספר ניסיונות</div><div class="v">${e.max_attempts ?? '—'}</div></div>
-      <div><div class="k">הצגת תוצאות</div><div class="v" style="font-size:.95rem">${e.show_results ? SHOW[e.show_results] : '—'}</div></div><div><div class="k">ציון קובע</div><div class="v" style="font-size:.95rem">${e.final_score_rule ? FINAL[e.final_score_rule] : '—'}</div></div><div><div class="k">כללים אושרו</div><div class="v">${e.rules_approved ? 'כן' : 'לא'}</div></div></div>
+      <div><div class="k">הצגת תוצאות</div><div class="v" style="font-size:.95rem">${e.show_results ? SHOW[e.show_results] : '—'}</div></div><div><div class="k">ציון קובע</div><div class="v" style="font-size:.95rem">${e.final_score_rule ? FINAL[e.final_score_rule] : '—'}</div></div><div><div class="k">מגבלת זמן</div><div class="v" style="font-size:.95rem">${e.time_limit_minutes ? e.time_limit_minutes + ' דקות' : 'ללא'}</div></div><div><div class="k">כללים אושרו</div><div class="v">${e.rules_approved ? 'כן' : 'לא'}</div></div></div>
       ${!rulesOk ? '<div class="callout warn"><span class="mark"></span><div><h4>המבחן לא ייפתח עדיין</h4><p>לפני פתיחה יש לקבוע ציון עובר, מספר ניסיונות, מועד הצגת תוצאות ואיזה ציון קובע, ולסמן ״אישרתי את כללי הציון״ בהגדרות.</p></div></div>' : ''}
       ${e.show_results === 'after_close' ? `<div class="btnrow"><button class="btn ghost sm" id="release">${e.results_released ? 'ביטול פרסום התוצאות' : 'פרסום התוצאות למשתתפים'}</button><span class="small muted">${e.results_released ? 'התוצאות מוצגות למשתתפים.' : 'התוצאות עוד לא מוצגות.'}</span></div>` : ''}` : ''}
     ${e.mode === 'external' ? `<p>קישור חיצוני: ${safeUrl(e.external_url) ? `<a class="ltr" href="${esc(e.external_url)}" target="_blank" rel="noopener">${esc(e.external_url)}</a>` : '<span class="req">לא הוגדר</span>'}</p>` : ''}
@@ -560,9 +560,10 @@ const examFields = [
   { k: 'max_attempts', l: 'מספר ניסיונות מותר', type: 'number', min: 1, max: 20 },
   { k: 'show_results', l: 'מתי להציג למשתתף את הציון', type: 'select', opts: { '': '— לבחירה —', ...SHOW }, hint: 'במצב ״מיד״ מי שמגיש/ה מעבר למספר הניסיונות לא מקבל/ת ציון על המסך — וזה עלול לרמוז שאותה ת״ז כבר הגישה. במצבים האחרים התשובה זהה לכולם.' },
   { k: 'final_score_rule', l: 'איזה ציון קובע כשיש יותר מניסיון אחד', type: 'select', opts: { '': '— לבחירה —', ...FINAL } },
+  { k: 'time_limit_minutes', l: 'מגבלת זמן (דקות)', type: 'number', min: 1, max: 600, hint: 'ריק = ללא מגבלת זמן. הזמן נספר לכל נבחן/ת מרגע ההתחלה, ובסיומו המבחן מוגש אוטומטית. שינוי חל על התחלות חדשות בלבד.' },
   { k: 'rules_approved', l: 'אישרתי את כללי הציון', type: 'checkbox', hint: 'הציון = סך הנקודות בשאלות שנענו נכון, חלקי סך כל הנקודות, ×100. בחירה מרובה נחשבת נכונה רק אם נבחרו בדיוק כל התשובות הנכונות. שאלות פתוחות נבדקות ידנית.' },
 ];
-const examToggle = (el, v) => { for (const k of ['pass_score', 'max_attempts', 'show_results', 'final_score_rule', 'rules_approved']) { const x = $(`[data-fk="${k}"]`, el) || $('#f_' + k, el)?.closest('.choice'); if (x) x.hidden = v.mode !== 'internal'; } const u = $('[data-fk="external_url"]', el); if (u) u.hidden = v.mode !== 'external'; };
+const examToggle = (el, v) => { for (const k of ['pass_score', 'max_attempts', 'show_results', 'final_score_rule', 'time_limit_minutes', 'rules_approved']) { const x = $(`[data-fk="${k}"]`, el) || $('#f_' + k, el)?.closest('.choice'); if (x) x.hidden = v.mode !== 'internal'; } const u = $('[data-fk="external_url"]', el); if (u) u.hidden = v.mode !== 'external'; };
 BIND.exam = () => {
   $('#create-exam')?.addEventListener('click', async () => { await run(() => store.insert('exams', { cohort_id: selCohort, title: 'מבחן מסכם', mode: 'off' }), 'נוצר'); render(); });
   $('#copy-exam')?.addEventListener('click', () => copyFromCohort('exam'));
@@ -775,7 +776,7 @@ async function copyFromCohort(kind) {
   await run(async () => {
     if (kind === 'exam') {
       const [src] = await store.list('exams', { eq: { cohort_id: v.from } }); if (!src) throw new Error('במחזור שנבחר אין מבחן');
-      const { id, cohort_id, created_at, is_open, results_released, ...rest } = src;
+      const { id, cohort_id, created_at, is_open, results_released, import_batch, historical_rules, grace_until, closed_at, ...rest } = src;
       const e = await store.insert('exams', { ...rest, cohort_id: selCohort, is_open: false, results_released: false });
       const qs = await store.list('exam_questions', { eq: { exam_id: src.id }, order: [['sort']] });
       const keys = await store.list('exam_keys', { inList: ['question_id', qs.map(q => q.id)] });

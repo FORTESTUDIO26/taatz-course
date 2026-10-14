@@ -393,5 +393,42 @@ console.log('\nניקוד 2.5 לשאלה (40 שאלות = 100)');
   const dr = (await rows('anon', null, `select get_exam_draft($1) r`, [st.token]))[0].r;
   ok(dr.questions?.length === 40 && !('explanation' in dr.questions[0]) && !('correct' in dr.questions[0]), 'המשתתף/ת מקבל/ת את השאלות דרך התחלת המבחן, בלי הסבר ובלי תשובה', JSON.stringify(Object.keys(dr.questions?.[0] || dr)));
 }
+console.log('\nמגבלת זמן');
+{
+  const [{ e }] = await rows('authenticated', ADMIN, `select id e from exams where cohort_id = (select id from cohorts where is_active)`);
+  const qs = (await rows('authenticated', ADMIN, `select id from exam_questions where exam_id = $1 order by sort`, [e])).map(r => r.id);
+  // בלי מגבלה: אין מועד סיום
+  let t0 = (await rows('anon', null, `select start_exam($1, 'ללא מגבלה', 'יחידה', $2) r`, [e, ID1]))[0].r;
+  ok(t0.deadline === null, 'בלי מגבלת זמן — אין מועד סיום');
+  ok(!!(await fails('authenticated', ADMIN, `update exams set time_limit_minutes = 0 where id = $1`, [e])), 'מגבלת זמן חייבת להיות חיובית');
+  await as('authenticated', ADMIN, `update exams set time_limit_minutes = 45 where id = $1`, [e]);
+  const t1 = (await rows('anon', null, `select start_exam($1, 'נבחנת זמן', 'יחידה', $2) r`, [e, ID3]))[0].r;
+  const mins = (new Date(t1.deadline) - new Date(t1.server_now)) / 60000;
+  ok(Math.abs(mins - 45) < 0.1, 'התחלה: מועד סיום = עכשיו + 45 דקות', String(mins));
+  const d1 = (await rows('anon', null, `select get_exam_draft($1) r`, [t1.token]))[0].r;
+  ok(d1.questions?.length === 40 && d1.time_over === false && d1.deadline, 'לפני תום הזמן: השאלות ומועד הסיום מוחזרים');
+  const good = {}; qs.forEach((id, i) => { good[id] = i < 3 ? ['a', 'c'] : 'b'; });   // 40 נכונות
+  await as('anon', null, `select save_exam_draft($1, $2::jsonb)`, [t1.token, JSON.stringify(Object.fromEntries(Object.entries(good).slice(0, 20)))]);   // נשמרו 20 תשובות
+  ok((await rows('authenticated', OTHER, `select * from exam_starts`)).length === 0 && !!(await fails('anon', null, `select _start_time_over(s) from exam_starts s`)), 'מועד הסיום ופונקציית הזמן אינם נגישים מבחוץ');
+  // הזמן עבר (יותר מדקה אחרי הסיום)
+  await db.exec(`update exam_starts set deadline = now() - interval '2 minutes' where token = '${t1.token}'`);
+  ok(/time_over/.test(await fails('anon', null, `select save_exam_draft($1, $2::jsonb)`, [t1.token, JSON.stringify(good)])), 'אחרי תום הזמן אי אפשר לשנות תשובות');
+  const d2 = (await rows('anon', null, `select get_exam_draft($1) r`, [t1.token]))[0].r;
+  ok(d2.time_over === true && d2.questions === null, 'אחרי תום הזמן השאלות לא מוחזרות');
+  const late = (await rows('anon', null, `select submit_exam($1, $2::jsonb) r`, [t1.token, JSON.stringify(good)]))[0].r;
+  const sl = (await rows('authenticated', ADMIN, `select score_pct::float p, status_note n from exam_submissions where receipt = $1`, [late.receipt]))[0];
+  ok(late.late === true && sl.p === 50 && /אחרי תום הזמן/.test(sl.n), 'הגשה מאוחרת: נספרות רק 20 התשובות שנשמרו עד תום הזמן (50), ומסומנת', JSON.stringify(sl));
+  // בתוך דקת החסד (עיכוב רשת): ההגשה האוטומטית נקלטת עם התשובות שנשלחו
+  const t2 = (await rows('anon', null, `select start_exam($1, 'נבחנת זמן', 'יחידה', $2) r`, [e, ID3]))[0].r;
+  await db.exec(`update exam_starts set deadline = now() - interval '30 seconds' where token = '${t2.token}'`);
+  const onTime = (await rows('anon', null, `select submit_exam($1, $2::jsonb) r`, [t2.token, JSON.stringify(good)]))[0].r;
+  const so = (await rows('authenticated', ADMIN, `select score_pct::float p, status_note n from exam_submissions where receipt = $1`, [onTime.receipt]))[0];
+  ok(onTime.late === false && so.p === 100 && so.n === null, 'הגשה אוטומטית בסיום הזמן (עד דקה): כל התשובות נקלטות', JSON.stringify(so));
+  // שינוי המגבלה לא משנה ניסיון שכבר התחיל
+  const t3 = (await rows('anon', null, `select start_exam($1, 'נבחנת זמן', 'יחידה', $2) r`, [e, ID2]))[0].r;
+  await as('authenticated', ADMIN, `update exams set time_limit_minutes = 10 where id = $1`, [e]);
+  const d3 = (await rows('anon', null, `select get_exam_draft($1) r`, [t3.token]))[0].r;
+  ok(d3.deadline === t3.deadline, 'שינוי המגבלה חל על התחלות חדשות בלבד');
+}
 console.log(`\n${pass} עברו, ${fail} נכשלו`);
 process.exit(fail ? 1 : 0);
