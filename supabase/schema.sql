@@ -1045,3 +1045,7 @@ create policy "materials admin write" on storage.objects for all to authenticate
 grant usage on schema public to anon, authenticated;
 grant select on all tables in schema public to anon;
 grant select, insert, update, delete on all tables in schema public to authenticated;
+
+-- הסבר לשאלת מבחן עלול לרמוז על התשובה: לא נחשף לציבור (המשתתפים מקבלים שאלות דרך start_exam בלבד)
+revoke select on public.exam_questions from anon;
+grant select (id, exam_id, sort, qtype, prompt, options, points) on public.exam_questions to anon;

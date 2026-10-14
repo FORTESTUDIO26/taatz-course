@@ -106,10 +106,10 @@ const Q4 = await q(3, 'short', 'ש4', [], 1, ['משא"ן']);
 const ALL_RIGHT = JSON.stringify({ [Q1]: 'b', [Q2]: ['c', 'a'], [Q3]: 'false', [Q4]: 'משאן' });
 const HALF = JSON.stringify({ [Q1]: 'b', [Q2]: ['a'], [Q3]: 'false' });   // 2/5 = 40
 ok(!!(await fails('anon', null, `select save_exam_question($1, null, 0, 'single', 'x', '[]', 1, '"a"')`, [E])), 'הציבור לא יכול להוסיף שאלות');
-ok((await rows('anon', null, `select * from exam_questions`)).length === 0, 'שאלות לא נחשפות לפני פתיחה');
+ok((await rows('anon', null, `select id, prompt, options from exam_questions`)).length === 0, 'שאלות לא נחשפות לפני פתיחה');
 ok(/exam_closed/.test(await fails('anon', null, `select t_submit($1, 'דנה כהן', 'יחידה', $2, '{}'::jsonb)`, [E, ID1])), 'אי אפשר להגיש מבחן סגור');
 await as('authenticated', ADMIN, `update exams set pass_score = 70, max_attempts = 1, show_results = 'immediately', final_score_rule = 'highest', rules_approved = true, is_open = true where id = $1`, [E]);
-ok((await rows('anon', null, `select * from exam_questions`)).length === 4, 'אחרי פתיחה — השאלות גלויות');
+ok((await rows('anon', null, `select id, prompt, options from exam_questions`)).length === 4, 'אחרי פתיחה — השאלות גלויות');
 ok((await rows('anon', null, `select * from exam_keys`)).length === 0, 'מפתח התשובות חסום לציבור');
 ok((await rows('authenticated', OTHER, `select * from exam_keys`)).length === 0, 'מפתח התשובות חסום גם למחובר שאינו מנהלת');
 ok(/bad_id/.test(await fails('anon', null, `select t_submit($1, 'דנה כהן', 'יחידה', '123456789', '{}'::jsonb)`, [E])), 'בדיקת ת"ז בשרת');
@@ -222,7 +222,7 @@ ok(/feedback_closed/.test(await fails('anon', null, `select submit_feedback($1, 
 console.log('\nהפרדת מחזורים');
 await as('authenticated', ADMIN, `select set_active_cohort($1)`, [C8]);
 ok((await rows('anon', null, `select name from cohorts`))[0].name === 'מחזור ח', 'אחרי מעבר — האתר מציג את המחזור החדש');
-ok((await rows('anon', null, `select * from exam_questions`)).length === 0, 'מבחן המחזור הקודם כבר לא גלוי');
+ok((await rows('anon', null, `select id, prompt, options from exam_questions`)).length === 0, 'מבחן המחזור הקודם כבר לא גלוי');
 ok(/exam_closed/.test(await fails('anon', null, `select t_submit($1, 'מישהו', 'יחידה', $2, '{}'::jsonb)`, [E, ID3])), 'אי אפשר להגיש למבחן של מחזור לא פעיל');
 ok((await rows('authenticated', ADMIN, `select count(*)::int c from exam_submissions where cohort_id = $1`, [C7]))[0].c === 7, 'תוצאות המחזור הקודם נשמרו');
 
@@ -236,9 +236,9 @@ ok(/missing_keys/.test(await fails('authenticated', ADMIN, `select set_exam_open
 await as('authenticated', ADMIN, `insert into exam_keys values ($1, '"b"')`, [P1]);
 ok(!!(await fails('anon', null, `select set_exam_open($1, true)`, [E2])) && /not_admin/.test(await fails('authenticated', OTHER, `select set_exam_open($1, true)`, [E2])), 'רק מנהלת פותחת וסוגרת');
 ok(/exam_closed/.test(await fails('anon', null, `select start_exam($1, 'נבחן', 'יחידה', $2)`, [E2, ID3])), 'מבחן סגור: אי אפשר להתחיל');
-ok((await rows('anon', null, `select * from exam_questions where exam_id = $1`, [E2])).length === 0, 'מבחן סגור: השאלות לא נחשפות');
+ok((await rows('anon', null, `select id, prompt, options from exam_questions where exam_id = $1`, [E2])).length === 0, 'מבחן סגור: השאלות לא נחשפות');
 await as('authenticated', ADMIN, `select set_exam_open($1, true)`, [E2]);
-ok((await rows('anon', null, `select * from exam_questions where exam_id = $1`, [E2])).length === 1, 'אחרי פתיחה: השאלות גלויות');
+ok((await rows('anon', null, `select id, prompt, options from exam_questions where exam_id = $1`, [E2])).length === 1, 'אחרי פתיחה: השאלות גלויות');
 const tA = (await rows('anon', null, `select start_exam($1, 'נבחנת א', 'יחידה', $2) r`, [E2, ID1]))[0].r.token;
 const tB = (await rows('anon', null, `select start_exam($1, 'נבחן ב', 'יחידה', $2) r`, [E2, ID2]))[0].r.token;
 ok(/^[0-9a-f]{64}$/.test(tA), 'קוד התחלה אקראי ארוך');
@@ -249,7 +249,7 @@ ok((await rows('anon', null, `select * from exam_starts`)).length === 0, 'הצי
 // סגירה מתונה
 await as('authenticated', ADMIN, `select set_exam_open($1, false, 'graceful', 30)`, [E2]);
 ok(/exam_closed/.test(await fails('anon', null, `select start_exam($1, 'מאוחר', 'יחידה', $2)`, [E2, ID3])), 'סגירה מתונה: התחלה חדשה חסומה');
-ok((await rows('anon', null, `select * from exam_questions where exam_id = $1`, [E2])).length === 0, 'סגירה מתונה: השאלות לא נחשפות לחדשים');
+ok((await rows('anon', null, `select id, prompt, options from exam_questions where exam_id = $1`, [E2])).length === 0, 'סגירה מתונה: השאלות לא נחשפות לחדשים');
 let dr = (await rows('anon', null, `select get_exam_draft($1) r`, [tA]))[0].r;
 ok(dr.can_submit === true && dr.questions.length === 1 && dr.answers[P1] === 'b', 'מי שהתחיל: חוזר לטיוטה ולשאלות גם אחרי רענון');
 const sA = (await rows('anon', null, `select submit_exam($1, $2::jsonb) r`, [tA, JSON.stringify({ [P1]: 'b' })]))[0].r;
@@ -385,8 +385,13 @@ console.log('\nניקוד 2.5 לשאלה (40 שאלות = 100)');
   const s2 = (await rows('authenticated', ADMIN, `select score_pct::float p, passed from exam_submissions where receipt = $1`, [r2.receipt]))[0];
   ok(s2.p === 60 && s2.passed === false, '24 נכונות (תשובה מרובה חלקית נחשבת שגויה) → 60, לא עבר', JSON.stringify(s2));
   ok((await rows('anon', null, `select * from exam_keys where question_id = $1`, [qids[0]])).length === 0, 'מפתח התשובות חסום לציבור גם כשהמבחן פתוח');
-  const pub = await rows('anon', null, `select * from exam_questions where exam_id = $1 limit 1`, [E40]);
-  ok(pub.length === 0 || !('correct' in pub[0]), 'השאלות הגלויות לא כוללות תשובה נכונה');
+  await as('authenticated', ADMIN, `update exam_questions set explanation = 'הסבר שעלול לרמוז' where id = $1`, [qids[0]]);
+  const pub = await rows('anon', null, `select id, prompt, options, points from exam_questions where exam_id = $1`, [E40]);
+  ok(pub.length === 40 && !('correct' in pub[0]), 'השאלות הגלויות (מבחן פתוח) לא כוללות תשובה נכונה');
+  ok(/permission denied/.test(await fails('anon', null, `select explanation from exam_questions where id = $1`, [qids[0]])), 'הסבר לשאלה חסום לציבור');
+  const st = (await rows('anon', null, `select start_exam($1, 'בודקת', 'יחידה', $2) r`, [E40, ID3]))[0].r;
+  const dr = (await rows('anon', null, `select get_exam_draft($1) r`, [st.token]))[0].r;
+  ok(dr.questions?.length === 40 && !('explanation' in dr.questions[0]) && !('correct' in dr.questions[0]), 'המשתתף/ת מקבל/ת את השאלות דרך התחלת המבחן, בלי הסבר ובלי תשובה', JSON.stringify(Object.keys(dr.questions?.[0] || dr)));
 }
 console.log(`\n${pass} עברו, ${fail} נכשלו`);
 process.exit(fail ? 1 : 0);
