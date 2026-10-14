@@ -18,6 +18,24 @@ const TABS = [
 ];
 const SECTION_NAMES = { presentations: 'מצגות הקורס', course_booklets: 'חוברות הקורס', info_booklets: 'חוברות מידע', book: 'ספר קצין משא״ן ע״צ', podcasts: 'פודקאסטים', other: 'אחר' };
 const LINK_KEYS = [['policy_url', 'אתר המדיניות של מרכז תע״ץ'], ['instagram_url', 'אינסטגרם'], ['facebook_url', 'פייסבוק']];
+// אות התשובה הנכונה (למנהלת בלבד): לפי מיקום האפשרות ברשימה המוצגת למשתתפים — לא לפי המזהה במסד הנתונים
+const HEB_LETTERS = 'אבגדהוזחטיכלמנסעפצקרשת';
+const letterAt = i => (HEB_LETTERS[i] || String(i + 1)) + '׳';
+function keyLetters(q, k) {
+  if (!k || k.correct == null) return null;
+  const order = q.qtype === 'truefalse' ? ['true', 'false'] : (q.options || []).map(o => o.id);
+  if (!order.length) return null;
+  const idx = [].concat(k.correct).map(c => order.indexOf(String(c)));
+  if (idx.some(i => i < 0)) return '?';
+  return idx.sort((a, b) => a - b).map(letterAt).join(', ');
+}
+function keyLine(q, k) {
+  if (q.qtype === 'open') return '<div class="d">שאלה פתוחה — בדיקה ידנית, ללא אותיות</div>';
+  if (q.qtype === 'short') return k ? '<div class="d">תשובה קצרה — ללא אותיות (תשובות מאושרות בעריכת השאלה)</div>' : '';
+  const L = keyLetters(q, k);
+  if (L === '?') return '<div class="d"><span class="req">התשובה הנכונה אינה תואמת לאפשרויות — יש לבדוק בעריכת השאלה</span></div>';
+  return L ? `<div class="d key-letters">תשובה נכונה: <b>${L}</b></div>` : '';
+}
 const QTYPES_EXAM = { single: 'בחירה יחידה (אמריקאית)', multi: 'בחירה מרובה', truefalse: 'נכון / לא נכון', short: 'תשובה קצרה (השוואה לתשובות מאושרות)', open: 'שאלה פתוחה (בדיקה ידנית)' };
 const QTYPES_FB = { rating5: 'דירוג 1–5', single: 'בחירה יחידה', multi: 'בחירה מרובה', text: 'טקסט קצר', longtext: 'טקסט פתוח' };
 const FINAL = { highest: 'הציון הגבוה מבין הניסיונות', last: 'הציון של הניסיון האחרון' };
@@ -516,7 +534,7 @@ VIEWS.exam = async () => {
     </div>
     ${e.mode !== 'external' ? `<div class="sect-title">שאלות (${qs.length}) · סה״כ ${totalPts} נקודות</div>
     <div class="btnrow" style="margin-bottom:12px"><button class="btn solid" id="add-q">${icon('plus')}שאלה חדשה</button><button class="btn ghost" id="preview-types">תצוגת סוגי השאלות</button>${qs.length ? '<button class="btn solid" id="exam-preview">תצוגה מקדימה של המבחן</button>' : ''}</div>
-    ${qs.map((q, i) => { const k = keys.find(x => x.question_id === q.id); return `<div class="edit-row"><div class="grow"><div class="d">שאלה ${i + 1} · ${esc(QTYPES_EXAM[q.qtype])} · ${q.points} נק׳ ${q.import_batch ? '· <span class="tag gray">מיובא</span> ' : ''}${q.qtype !== 'open' && !k ? '<span class="req">· חסרה תשובה נכונה</span>' : ''}</div><div class="t">${esc(q.prompt)}</div></div>
+    ${qs.map((q, i) => { const k = keys.find(x => x.question_id === q.id); return `<div class="edit-row"><div class="grow"><div class="d">שאלה ${i + 1} · ${esc(QTYPES_EXAM[q.qtype])} · ${q.points} נק׳ ${q.import_batch ? '· <span class="tag gray">מיובא</span> ' : ''}${q.qtype !== 'open' && !k ? '<span class="req">· חסרה תשובה נכונה</span>' : ''}</div><div class="t">${esc(q.prompt)}</div>${keyLine(q, k)}</div>
       <div class="btnrow"><button class="btn ghost sm" data-edit-q="${q.id}" aria-label="עריכה">${icon('edit')}</button><button class="btn danger sm" data-del-q="${q.id}" aria-label="מחיקה">${icon('trash')}</button></div></div>`; }).join('')
       || '<div class="empty"><b>אין עדיין שאלות</b>השאלות יוזנו לאחר שתספקי אותן.</div>'}` : ''}</div>`;
 };

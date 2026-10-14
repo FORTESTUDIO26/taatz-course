@@ -360,5 +360,33 @@ console.log('\nייבוא היסטוריה');
   const after = (await rows('authenticated', ADMIN, `select (select count(*) from cohorts)::int c, (select count(*) from exam_submissions where import_batch is null)::int s, (select count(*) from feedback_responses where import_batch is null)::int f`))[0];
   ok(und.submissions === 2 && und.cohorts === 1 && after.c === before.c - 1 && after.s === before.s && after.f === before.f && JSON.stringify(await cnt()) === JSON.stringify(c0), 'ביטול מוחק רק את האצווה', JSON.stringify([und, before, after]));
 }
+console.log('\nניקוד 2.5 לשאלה (40 שאלות = 100)');
+{
+  const C40 = (await rows('authenticated', ADMIN, `insert into cohorts (name, start_date, end_date) values ('מחזור בדיקה – ניקוד', '2026-11-02', '2026-11-05') returning id`))[0].id;
+  await as('authenticated', ADMIN, `select set_active_cohort($1)`, [C40]);
+  const E40 = (await rows('authenticated', ADMIN, `insert into exams (cohort_id, mode, pass_score, max_attempts, show_results, final_score_rule, rules_approved) values ($1, 'internal', 70, 3, 'immediately', 'highest', true) returning id`, [C40]))[0].id;
+  const opts = JSON.stringify([{ id: 'a', text: 'א' }, { id: 'b', text: 'ב' }, { id: 'c', text: 'ג' }, { id: 'd', text: 'ד' }]);
+  const qids = [];
+  for (let i = 0; i < 40; i++) {
+    const multi = i < 3;
+    qids.push((await rows('authenticated', ADMIN, `select save_exam_question($1, null, $2, $3, $4, $5::jsonb, 2.5, $6::jsonb) id`,
+      [E40, i, multi ? 'multi' : 'single', `שאלה ${i + 1}`, opts, JSON.stringify(multi ? ['a', 'c'] : 'b')]))[0].id);
+  }
+  const sum = (await rows('authenticated', ADMIN, `select count(*)::int n, sum(points)::float s from exam_questions where exam_id = $1`, [E40]))[0];
+  ok(sum.n === 40 && sum.s === 100, '40 שאלות × 2.5 = 100 נקודות', JSON.stringify(sum));
+  await as('authenticated', ADMIN, `update exams set is_open = true where id = $1`, [E40]);
+  // 37 נכונות: 3 שאלות מרובות נכונות + 34 יחידות נכונות, 3 יחידות שגויות
+  const ans = {}; qids.forEach((id, i) => { ans[id] = i < 3 ? ['c', 'a'] : i < 37 ? 'b' : 'd'; });
+  const r1 = (await rows('anon', null, `select t_submit($1, 'בודקת ניקוד', 'יחידה', $2, $3::jsonb) r`, [E40, ID2, JSON.stringify(ans)]))[0].r;
+  const s1 = (await rows('authenticated', ADMIN, `select auto_points::float a, total_points::float t, score_pct::float p, passed from exam_submissions where receipt = $1`, [r1.receipt]))[0];
+  ok(s1.a === 92.5 && s1.t === 100 && s1.p === 92.5 && s1.passed === true && r1.score_pct == 92.5, '37 נכונות → 92.5 נקודות, ציון 92.5, עבר', JSON.stringify([s1, r1.score_pct]));
+  const ans2 = {}; qids.forEach((id, i) => { ans2[id] = i < 3 ? ['a'] : i < 27 ? 'b' : 'a'; });   // מרובה חלקית = שגויה; 24 נכונות
+  const r2 = (await rows('anon', null, `select t_submit($1, 'בודקת ניקוד', 'יחידה', $2, $3::jsonb) r`, [E40, ID2, JSON.stringify(ans2)]))[0].r;
+  const s2 = (await rows('authenticated', ADMIN, `select score_pct::float p, passed from exam_submissions where receipt = $1`, [r2.receipt]))[0];
+  ok(s2.p === 60 && s2.passed === false, '24 נכונות (תשובה מרובה חלקית נחשבת שגויה) → 60, לא עבר', JSON.stringify(s2));
+  ok((await rows('anon', null, `select * from exam_keys where question_id = $1`, [qids[0]])).length === 0, 'מפתח התשובות חסום לציבור גם כשהמבחן פתוח');
+  const pub = await rows('anon', null, `select * from exam_questions where exam_id = $1 limit 1`, [E40]);
+  ok(pub.length === 0 || !('correct' in pub[0]), 'השאלות הגלויות לא כוללות תשובה נכונה');
+}
 console.log(`\n${pass} עברו, ${fail} נכשלו`);
 process.exit(fail ? 1 : 0);
