@@ -30,16 +30,18 @@ const DRAFT_LABEL = 'לו״ז ראשוני – כפוף לעדכון';
 let store, data = {};
 
 async function load() {
-  const [settingsRows, cohorts, resources, glossary] = await Promise.all([
+  // המחזור הפעיל והלו״ז שלו מגיעים בבקשה אחת, במקביל להגדרות ולחומרים
+  const [settingsRows, cohorts, resources] = await Promise.all([
     store.list('site_settings'),
-    store.list('cohorts', { eq: { is_active: true } }),
+    store.list('cohorts', { eq: { is_active: true }, select: '*, schedule_items(*)' }),
     store.list('resources', { order: [['sort'], ['title']] }),
-    store.list('glossary_terms', { order: [['sort'], ['term']] }),
   ]);
   const settings = Object.fromEntries(settingsRows.map(r => [r.key, r.value]));
-  const cohort = cohorts[0] || null;
-  const schedule = cohort ? await store.list('schedule_items', { eq: { cohort_id: cohort.id }, order: [['day_date'], ['start_time'], ['sort']] }) : [];
-  data = { settings, cohort, schedule, glossary,
+  const { schedule_items: embedded, ...cohort } = cohorts[0] || {};
+  const bySlot = (a, b) => a.day_date.localeCompare(b.day_date) || String(a.start_time).localeCompare(String(b.start_time)) || a.sort - b.sort;
+  const schedule = !cohorts[0] ? [] : Array.isArray(embedded) ? embedded.slice().sort(bySlot)
+    : await store.list('schedule_items', { eq: { cohort_id: cohort.id }, order: [['day_date'], ['start_time'], ['sort']] });
+  data = { settings, cohort: cohorts[0] ? cohort : null, schedule, glossary: [],
     resources: resources.filter(r => r.is_published && (!r.cohort_id || r.cohort_id === cohort?.id)) };
 }
 

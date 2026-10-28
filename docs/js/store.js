@@ -48,8 +48,19 @@ export async function createStore() {
 /* =====================================================================
    LIVE — Supabase
    ===================================================================== */
+// ספריית Supabase כקובץ אחד (גרסה קבועה) — במקום שרשרת של קבצים קטנים שנטענים זה אחרי זה
+export const SUPABASE_JS = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.118.0/dist/umd/supabase.min.js';
+function loadSupabase() {
+  if (window.supabase?.createClient) return Promise.resolve(window.supabase);
+  return new Promise((res, rej) => {
+    const s = document.createElement('script'); s.src = SUPABASE_JS; s.crossOrigin = 'anonymous';
+    s.onload = () => window.supabase?.createClient ? res(window.supabase) : rej(new Error('Failed to fetch'));
+    s.onerror = () => rej(new Error('Failed to fetch'));
+    document.head.appendChild(s);
+  });
+}
 async function createLiveStore() {
-  const { createClient } = await import('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm');
+  const { createClient } = await loadSupabase();
   const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, { auth: { persistSession: true, autoRefreshToken: true } });
   const ok = ({ data, error }) => { if (error) throw new Error(error.message + (error.code ? ` (${error.code})` : '')); return data; };
 
