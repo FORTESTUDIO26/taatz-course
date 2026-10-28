@@ -9,14 +9,13 @@ const TABS = [
   { r: 'materials', t: 'חומרים וקישורים', i: 'booklet' },
   { r: 'podcasts', t: 'פודקאסטים', i: 'mic' },
   { r: 'content', t: 'עמוד הבית ודבר המדור', i: 'home' },
-  { r: 'glossary', t: 'מילון מונחים', i: 'glossary' },
   { r: 'exam', t: 'הגדרת מבחן', i: 'exam' },
   { r: 'feedback', t: 'הגדרת משוב', i: 'feedback' },
   { r: 'results', t: 'תוצאות מבחנים', i: 'chart' },
   { r: 'certs', t: 'טופסי סיום', i: 'award' },
   { r: 'fbsummary', t: 'סיכום משובים', i: 'chart' },
 ];
-const SECTION_NAMES = { presentations: 'מצגות הקורס', course_booklets: 'חוברות הקורס', info_booklets: 'חוברות מידע', book: 'ספר קצין משא״ן ע״צ', podcasts: 'פודקאסטים', other: 'אחר' };
+const SECTION_NAMES = { presentations: 'מצגות הקורס', course_booklets: 'חוברות הקורס', book: 'ספר קצין משא״ן ע״צ', podcasts: 'פודקאסטים', other: 'אחר' };
 const LINK_KEYS = [['policy_url', 'אתר המדיניות של מרכז תע״ץ'], ['instagram_url', 'אינסטגרם'], ['facebook_url', 'פייסבוק']];
 // אות התשובה הנכונה (למנהלת בלבד): לפי מיקום האפשרות ברשימה המוצגת למשתתפים — לא לפי המזהה במסד הנתונים
 const HEB_LETTERS = 'אבגדהוזחטיכלמנסעפצקרשת';

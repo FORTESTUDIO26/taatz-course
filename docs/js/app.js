@@ -6,7 +6,6 @@ import { esc, $, $$, icon, toast, confirmBox, safeUrl, todayISO, nowHM, fmtDayLo
 const SECTIONS = {
   presentations:   { title: 'מצגות הקורס', icon: 'slides', lede: 'המצגות שהוצגו בשיעורי הקורס.' },
   course_booklets: { title: 'חוברות הקורס', icon: 'booklet', lede: 'חוברות הלימוד של הקורס.' },
-  info_booklets:   { title: 'חוברות מידע', icon: 'info', lede: 'חוברות מידע וחומרי עזר לעבודה השוטפת.' },
   book:            { title: 'ספר קצין משא״ן ע״צ', icon: 'book', lede: 'הספר המקצועי של קצין משא״ן ע״צ.' },
   podcasts:        { title: 'פודקאסטים', icon: 'mic', lede: 'פרקי הפודקאסט של הקורס.' },
 };
@@ -16,10 +15,8 @@ const NAV = [
     { r: 'schedule', t: 'לו״ז הקורס', i: 'calendar', d: 'ימים, שעות, נושאים, מרצים ומיקום' },
     { r: 'presentations', t: 'מצגות', i: 'slides', d: 'מצגות השיעורים' },
     { r: 'course-booklets', t: 'חוברות הקורס', i: 'booklet', d: 'חוברות הלימוד' },
-    { r: 'info-booklets', t: 'חוברות מידע', i: 'info', d: 'חומרי עזר לעבודה' },
     { r: 'book', t: 'ספר קצין משא״ן ע״צ', i: 'book', d: 'הספר המקצועי' },
     { r: 'podcasts', t: 'פודקאסטים', i: 'mic', d: 'פרקים להאזנה' },
-    { r: 'glossary', t: 'מילון מונחים', i: 'glossary', d: 'מונחים ומושגים מקצועיים' },
   ] },
   { group: 'הערכה', items: [
     { r: 'exam', t: 'מבחן הקורס', i: 'exam', d: 'מבחן מסכם' },
@@ -27,7 +24,7 @@ const NAV = [
     { r: 'certificate', t: 'טופס סיום קורס', i: 'award', d: 'לאחר אישור צוות הקורס' },
   ] },
 ];
-const ROUTE_SEC = { presentations: 'presentations', 'course-booklets': 'course_booklets', 'info-booklets': 'info_booklets', book: 'book', podcasts: 'podcasts' };
+const ROUTE_SEC = { presentations: 'presentations', 'course-booklets': 'course_booklets', book: 'book', podcasts: 'podcasts' };
 const DRAFT_LABEL = 'לו״ז ראשוני – כפוף לעדכון';
 
 let store, data = {};
@@ -76,8 +73,8 @@ const draftNote = () => data.cohort && !data.cohort.schedule_approved
 
 /* ---------------- views ---------------- */
 const VIEWS = {
-  '': viewHome, schedule: viewSchedule, presentations: viewSection, 'course-booklets': viewSection, 'info-booklets': viewSection,
-  book: viewSection, podcasts: viewSection, glossary: viewGlossary, exam: viewExam, feedback: viewFeedback, certificate: viewCertificate,
+  '': viewHome, schedule: viewSchedule, presentations: viewSection, 'course-booklets': viewSection,
+  book: viewSection, podcasts: viewSection, exam: viewExam, feedback: viewFeedback, certificate: viewCertificate,
 
 };
 
