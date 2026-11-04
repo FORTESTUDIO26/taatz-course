@@ -411,3 +411,7 @@ fieldset.q{min-width:0}
 .exam-clock b{font-size:1.35rem;letter-spacing:.06em;font-variant-numeric:tabular-nums}
 .exam-clock.warn{background:#8A4B00}
 .exam-clock.last{background:#9B1C31}
+
+/* admin exam screen: correct answer, letter and text */
+.key-letters .key-ans{display:block;margin-top:2px;color:var(--ink,#0D2534)}
+.key-letters .key-ans b{margin-inline-end:4px}

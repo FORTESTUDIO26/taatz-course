@@ -26,14 +26,16 @@ function keyLetters(q, k) {
   if (!order.length) return null;
   const idx = [].concat(k.correct).map(c => order.indexOf(String(c)));
   if (idx.some(i => i < 0)) return '?';
-  return idx.sort((a, b) => a - b).map(letterAt).join(', ');
+  // אות + נוסח התשובה, לכל תשובה נכונה (בבחירה מרובה — כל אחת בשורה)
+  const textAt = i => q.qtype === 'truefalse' ? ['נכון', 'לא נכון'][i] : q.options[i]?.text || '';
+  return idx.sort((a, b) => a - b).map(i => `<span class="key-ans"><b>${letterAt(i)}</b> ${esc(textAt(i))}</span>`).join('');
 }
 function keyLine(q, k) {
   if (q.qtype === 'open') return '<div class="d">שאלה פתוחה — בדיקה ידנית, ללא אותיות</div>';
   if (q.qtype === 'short') return k ? '<div class="d">תשובה קצרה — ללא אותיות (תשובות מאושרות בעריכת השאלה)</div>' : '';
   const L = keyLetters(q, k);
   if (L === '?') return '<div class="d"><span class="req">התשובה הנכונה אינה תואמת לאפשרויות — יש לבדוק בעריכת השאלה</span></div>';
-  return L ? `<div class="d key-letters">תשובה נכונה: <b>${L}</b></div>` : '';
+  return L ? `<div class="d key-letters">${k && [].concat(k.correct).length > 1 ? 'תשובות נכונות:' : 'תשובה נכונה:'} ${L}</div>` : '';
 }
 const QTYPES_EXAM = { single: 'בחירה יחידה (אמריקאית)', multi: 'בחירה מרובה', truefalse: 'נכון / לא נכון', short: 'תשובה קצרה (השוואה לתשובות מאושרות)', open: 'שאלה פתוחה (בדיקה ידנית)' };
 const QTYPES_FB = { rating5: 'דירוג 1–5', single: 'בחירה יחידה', multi: 'בחירה מרובה', text: 'טקסט קצר', longtext: 'טקסט פתוח' };
