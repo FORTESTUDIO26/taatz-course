@@ -1,6 +1,6 @@
 // מסך ניהול. כל ההרשאות נבדקות בשרת (RLS + פונקציות שרת); המסך רק מציג.
 import { createStore, errText } from './store.js';
-import { esc, $, $$, icon, toast, sheet, confirmBox, safeUrl, fmtDate, fmtDayLong, fmtDateTime, hm, fmtRange, downloadXLSX, isBreak,
+import { esc, $, $$, icon, mdLite, toast, sheet, confirmBox, safeUrl, fmtDate, fmtDayLong, fmtDateTime, hm, fmtRange, downloadXLSX, isBreak,
   FOOTER_TEXT, demoBanner } from './ui.js';
 
 const TABS = [
@@ -527,6 +527,7 @@ VIEWS.exam = async () => {
 </div></div>
     <div class="sw-box" style="border-top:0;padding-top:0">${switchHTML('data-exam-sw', selCohort, examStateOf(e), 'מבחן')}</div>
     ${historyBox(e)}
+    ${await reviewCard()}
     ${e.mode === 'internal' ? `<div class="stat"><div><div class="k">ציון עובר</div><div class="v">${e.pass_score ?? '—'}</div></div><div><div class="k">מספר ניסיונות</div><div class="v">${e.max_attempts ?? '—'}</div></div>
       <div><div class="k">הצגת תוצאות</div><div class="v" style="font-size:.95rem">${e.show_results ? SHOW[e.show_results] : '—'}</div></div><div><div class="k">ציון קובע</div><div class="v" style="font-size:.95rem">${e.final_score_rule ? FINAL[e.final_score_rule] : '—'}</div></div><div><div class="k">מגבלת זמן</div><div class="v" style="font-size:.95rem">${e.time_limit_minutes ? e.time_limit_minutes + ' דקות' : 'ללא'}</div></div><div><div class="k">כללים אושרו</div><div class="v">${e.rules_approved ? 'כן' : 'לא'}</div></div></div>
       ${!rulesOk ? '<div class="callout warn"><span class="mark"></span><div><h4>המבחן לא ייפתח עדיין</h4><p>לפני פתיחה יש לקבוע ציון עובר, מספר ניסיונות, מועד הצגת תוצאות ואיזה ציון קובע, ולסמן ״אישרתי את כללי הציון״ בהגדרות.</p></div></div>' : ''}
@@ -565,7 +566,52 @@ const examFields = [
   { k: 'rules_approved', l: 'אישרתי את כללי הציון', type: 'checkbox', hint: 'הציון = סך הנקודות בשאלות שנענו נכון, חלקי סך כל הנקודות, ×100. בחירה מרובה נחשבת נכונה רק אם נבחרו בדיוק כל התשובות הנכונות. שאלות פתוחות נבדקות ידנית.' },
 ];
 const examToggle = (el, v) => { for (const k of ['pass_score', 'max_attempts', 'show_results', 'final_score_rule', 'time_limit_minutes', 'rules_approved']) { const x = $(`[data-fk="${k}"]`, el) || $('#f_' + k, el)?.closest('.choice'); if (x) x.hidden = v.mode !== 'internal'; } const u = $('[data-fk="external_url"]', el); if (u) u.hidden = v.mode !== 'external'; };
+// "חזרה לפני המבחן": הטקסט נשמר באזור המוגן; כשמוצג באתר — עותק שלו בהגדרות הציבוריות, וכשמוסתר — העותק נמחק
+async function reviewState() {
+  const priv = (await store.list('private_assets', { eq: { key: 'exam_review' } }))[0]?.value || {};
+  const pub = (await store.list('site_settings', { eq: { key: 'exam_review' } }))[0]?.value || {};
+  return { title: priv.title || 'חזרה לפני המבחן', body: priv.body || '', shown: !!pub.body };
+}
+async function publishReview(r, show) {
+  const now = new Date().toISOString();
+  await store.upsert('site_settings', { key: 'exam_review', value: show && r.body ? { title: r.title, body: r.body } : {}, updated_at: now }, 'key');
+}
+async function reviewCard() {
+  const r = await reviewState();
+  const st = { open: r.shown, label: r.shown ? 'מוצג באתר' : 'מוסתר', can: !!r.body };
+  return `<div class="callout" style="align-items:flex-start"><span class="mark"></span><div style="flex:1"><h4>חזרה לפני המבחן</h4>
+    <p class="small">עמוד סיכום לחניכים בקטגוריית ״הערכה״ באתר. כשהוא מוסתר הוא לא מופיע בתפריט, והטקסט לא נגיש למבקרים.${r.body ? '' : ' עדיין אין טקסט.'}</p>
+    <div class="sw-box" style="border-top:0;padding-top:4px">${switchHTML('data-review-sw', 'review', st, 'הצגה באתר')}</div>
+    <div class="btnrow"><button class="btn ghost sm" id="review-edit">${icon('edit')}עריכת הטקסט</button>${r.body ? '<button class="btn ghost sm" id="review-preview">תצוגה מקדימה</button>' : ''}</div></div></div>`;
+}
+document.addEventListener('click', async e => {
+  if (e.target.closest('[data-review-sw]')) {
+    const r = await reviewState();
+    if (!r.body) return toast('יש להזין טקסט לפני ההצגה', true);
+    await run(() => publishReview(r, !r.shown), r.shown ? 'החזרה הוסתרה מהאתר' : 'החזרה מוצגת באתר'); render();
+  }
+});
+
 BIND.exam = () => {
+  $('#review-edit')?.addEventListener('click', async () => {
+    const r = await reviewState();
+    const v = await formSheet('חזרה לפני המבחן', [
+      { k: 'title', l: 'כותרת', req: true },
+      { k: 'body', l: 'הטקסט', type: 'textarea', rows: 18, hint: 'שורה שמתחילה ב-"## " = כותרת נושא · שורה שמתחילה ב-"- " = נקודה ברשימה · **טקסט** = מודגש' },
+    ], { title: r.title, body: r.body }, { wide: true, sub: r.shown ? 'החזרה מוצגת כרגע באתר — השינוי יופיע שם מיד.' : 'החזרה מוסתרת כרגע.' });
+    if (!v) return;
+    await run(async () => {
+      const now = new Date().toISOString();
+      await store.upsert('private_assets', { key: 'exam_review', value: { title: v.title, body: v.body || '' }, updated_at: now }, 'key');
+      if (r.shown) await publishReview({ title: v.title, body: v.body || '' }, !!v.body);
+    }, 'נשמר');
+    render();
+  });
+  $('#review-preview')?.addEventListener('click', async () => {
+    const r = await reviewState();
+    sheet(`<div class="tag amber" style="margin-bottom:8px;white-space:normal">תצוגה מקדימה — כך ייראה העמוד באתר</div><h3>${esc(r.title)}</h3>
+      <div class="card pad review-body" style="box-shadow:none">${mdLite(r.body)}</div><div class="btnrow" style="margin-top:12px"><button class="btn ghost" data-close>סגירה</button></div>`, { wide: true });
+  });
   $('#create-exam')?.addEventListener('click', async () => { await run(() => store.insert('exams', { cohort_id: selCohort, title: 'מבחן מסכם', mode: 'off' }), 'נוצר'); render(); });
   $('#copy-exam')?.addEventListener('click', () => copyFromCohort('exam'));
   $('#exam-settings')?.addEventListener('click', async () => {

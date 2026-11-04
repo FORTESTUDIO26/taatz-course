@@ -1,5 +1,19 @@
 // עזרי ממשק משותפים לאתר ולמסך הניהול
 export const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+// טקסט מעוצב פשוט: "## כותרת", "- פריט", "**מודגש**"; כל השאר פסקה. בטוח: הטקסט מקודד לפני העיצוב.
+export function mdLite(text) {
+  const inl = s => esc(s).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>');
+  const out = []; let list = null;
+  const close = () => { if (list) { out.push('<ul>' + list.join('') + '</ul>'); list = null; } };
+  for (const raw of String(text || '').split('\n')) {
+    const line = raw.trim();
+    if (!line) { close(); continue; }
+    if (line.startsWith('## ')) { close(); out.push('<h2>' + inl(line.slice(3)) + '</h2>'); }
+    else if (/^[-•]\s+/.test(line)) { (list ||= []).push('<li>' + inl(line.replace(/^[-•]\s+/, '')) + '</li>'); }
+    else { close(); out.push('<p>' + inl(line) + '</p>'); }
+  }
+  close(); return out.join('');
+}
 export const $ = (sel, root = document) => root.querySelector(sel);
 export const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
 

@@ -415,3 +415,10 @@ fieldset.q{min-width:0}
 /* admin exam screen: correct answer, letter and text */
 .key-letters .key-ans{display:block;margin-top:2px;color:var(--ink,#0D2534)}
 .key-letters .key-ans b{margin-inline-end:4px}
+
+/* exam review page */
+.review-body h2{font-size:1.15rem;color:var(--deep);margin:22px 0 8px}
+.review-body h2:first-child{margin-top:0}
+.review-body ul{margin:0 0 6px;padding-inline-start:22px;line-height:1.7}
+.review-body li{margin-bottom:6px}
+.review-body p{margin:0 0 10px}

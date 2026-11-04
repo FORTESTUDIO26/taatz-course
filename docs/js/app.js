@@ -1,6 +1,6 @@
 import { createStore, errText } from './store.js';
 import { installHTML, handleInstallClick } from './install.js';
-import { esc, $, $$, icon, toast, confirmBox, safeUrl, todayISO, nowHM, fmtDayLong, fmtWeekday, fmtDM, hm, fmtRange, fmtDateTime,
+import { esc, $, $$, icon, mdLite, toast, confirmBox, safeUrl, todayISO, nowHM, fmtDayLong, fmtWeekday, fmtDM, hm, fmtRange, fmtDateTime,
   blockClass, isBreak, FOOTER_TEXT, demoBanner, normIlId } from './ui.js';
 
 const SECTIONS = {
@@ -19,6 +19,7 @@ const NAV = [
     { r: 'podcasts', t: 'פודקאסטים', i: 'mic', d: 'פרקים להאזנה' },
   ] },
   { group: 'הערכה', items: [
+    { r: 'review', t: 'חזרה לפני המבחן', i: 'booklet', d: 'סיכום הנושאים לקראת המבחן' },
     { r: 'exam', t: 'מבחן הקורס', i: 'exam', d: 'מבחן מסכם' },
     { r: 'feedback', t: 'משוב הקורס', i: 'feedback', d: 'נשמח לשמוע מכם' },
     { r: 'certificate', t: 'טופס סיום קורס', i: 'award', d: 'לאחר אישור צוות הקורס' },
@@ -46,12 +47,20 @@ async function load() {
 }
 
 /* ---------------- shell ---------------- */
+// "חזרה לפני המבחן" מופיע רק כשהמנהלת פתחה אותו להצגה
+const reviewOn = () => !!data.settings.exam_review?.body;
+const navVisible = it => it.r !== 'review' || reviewOn();
+function viewReview() {
+  const r = data.settings.exam_review || {};
+  if (!reviewOn()) return `<div class="wrap">${head('booklet', '', 'חזרה לפני המבחן')}${soon('החזרה לפני המבחן אינה מוצגת כעת', '')}</div>`;
+  return `<div class="wrap">${head('booklet', data.cohort?.name || '', r.title || 'חזרה לפני המבחן')}<div class="card pad review-body">${mdLite(r.body)}</div></div>`;
+}
 function renderShell() {
   const s = data.settings;
   $('#hdr-title').textContent = s.course_title || 'קורס קציני משא״ן ע״צ';
   $('#hdr-sub').textContent = [s.org_name || 'מרכז תע״ץ', data.cohort?.name].filter(Boolean).join(' · ');
   const route = currentRoute();
-  $('#side-nav').innerHTML = NAV.map(g => `${g.group ? `<div class="side-grp">${esc(g.group)}</div>` : ''}${g.items.map(it =>
+  $('#side-nav').innerHTML = NAV.map(g => `${g.group ? `<div class="side-grp">${esc(g.group)}</div>` : ''}${g.items.filter(navVisible).map(it =>
     `<a class="nav-item${route === it.r ? ' is-on' : ''}" href="#/${it.r}" ${route === it.r ? 'aria-current="page"' : ''}>${icon(it.i)}<span>${esc(it.t)}</span></a>`).join('')}`).join('');
   $('#foot').innerHTML = `${installHTML()}${footLinks()}<div>${FOOTER_TEXT}</div>`;
 }
@@ -76,13 +85,13 @@ const draftNote = () => data.cohort && !data.cohort.schedule_approved
 /* ---------------- views ---------------- */
 const VIEWS = {
   '': viewHome, schedule: viewSchedule, presentations: viewSection, 'course-booklets': viewSection,
-  book: viewSection, podcasts: viewSection, exam: viewExam, feedback: viewFeedback, certificate: viewCertificate,
+  book: viewSection, podcasts: viewSection, review: viewReview, exam: viewExam, feedback: viewFeedback, certificate: viewCertificate,
 
 };
 
 function viewHome() {
   const s = data.settings, c = data.cohort;
-  const tiles = NAV.slice(1).flatMap(g => g.items).map((it, i) => `<a class="tile" href="#/${it.r}" style="animation-delay:${i * 35}ms">
+  const tiles = NAV.slice(1).flatMap(g => g.items).filter(navVisible).map((it, i) => `<a class="tile" href="#/${it.r}" style="animation-delay:${i * 35}ms">
     <span class="ic">${icon(it.i)}</span>${it.r === 'schedule' && c && !c.schedule_approved ? '<span class="tag amber corner">ראשוני</span>' : ''}
     <h3>${esc(it.t)}</h3><p>${esc(it.d || '')}</p></a>`).join('');
   return `<section class="hero"><div class="hero-in"><img class="hero-logo" src="assets/logo-512.png" alt="סמל מרכז תע״ץ" width="138" height="138">
